@@ -36,6 +36,13 @@ sudo systemctl daemon-reload && sudo systemctl enable --now supp
 
 Without a domain, Supp runs in **local mode**: self-signed TLS, plain DNS and token DoH still work (`curl -k` / skip-verify clients).
 
+> [!NOTE]
+> If port 53 is already in use by `systemd-resolved` (common on Ubuntu/Debian), stop and disable it or set `DNSStubListener=no` in `/etc/systemd/resolved.conf`:
+> ```sh
+> sudo systemctl stop systemd-resolved
+> sudo systemctl disable systemd-resolved
+> ```
+
 ## Configure your devices
 
 | Device | Where | Value |

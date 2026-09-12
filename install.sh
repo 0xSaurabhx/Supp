@@ -33,7 +33,6 @@ install -m 0755 "$TMP/supp" "$INSTALL_BIN"
 mkdir -p "$CONFIG_DIR" "$DATA_DIR"
 if [ ! -f "$CONFIG_DIR/config.toml" ]; then
   echo "==> creating default config (edit $CONFIG_DIR/config.toml, then re-run init)"
-  sed -n '1,200p' /dev/null
   $INSTALL_BIN init --config "$CONFIG_DIR/config.toml" --token "$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 else
   echo "==> config exists, keeping it"
@@ -42,7 +41,8 @@ fi
 # 4. systemd
 if command -v systemctl >/dev/null 2>&1; then
   cat > /etc/systemd/system/supp.service <<'EOF'
-[Unit]  Description=Supp privacy DNS server (DoH/DoT/plain + blocking)
+[Unit]
+Description=Supp privacy DNS server (DoH/DoT/plain + blocking)
 After=network-online.target
 Wants=network-online.target
 
