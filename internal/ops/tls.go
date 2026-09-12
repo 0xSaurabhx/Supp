@@ -73,14 +73,31 @@ func GetCerts(cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
 
 // TLSConfig returns a *tls.Config for the specified NextProtos (ALPN).
 func (t *TLSCerts) TLSConfig(nextProtos ...string) *tls.Config {
-	cfg := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		NextProtos: nextProtos,
-	}
+	var cfg *tls.Config
 	if t != nil && t.Manager != nil {
-		cfg.GetCertificate = t.Manager.GetCertificate
-	} else if t != nil && t.Cert != nil {
-		cfg.Certificates = []tls.Certificate{*t.Cert}
+		cfg = t.Manager.TLSConfig()
+	} else {
+		cfg = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+		if t != nil && t.Cert != nil {
+			cfg.Certificates = []tls.Certificate{*t.Cert}
+		}
+	}
+	if len(nextProtos) > 0 {
+		// Preserve acme-tls/1 from t.Manager.TLSConfig() while appending requested ALPN protocols.
+		for _, p := range nextProtos {
+			found := false
+			for _, existing := range cfg.NextProtos {
+				if existing == p {
+					found = true
+					break
+				}
+			}
+			if !found {
+				cfg.NextProtos = append(cfg.NextProtos, p)
+			}
+		}
 	}
 	return cfg
 }
