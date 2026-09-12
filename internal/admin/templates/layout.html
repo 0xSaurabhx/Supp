@@ -3,113 +3,848 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Supp Dashboard</title>
+<title>Supp — Privacy DNS Control Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0b0f14;--card:#11161d;--line:#2d333b;--fg:#e6edf3;--dim:#8b949e;--acc:#2f81f7;--bad:#f85149;--ok:#3fb950}
-*{box-sizing:border-box}
-body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
-header{display:flex;align-items:center;gap:1rem;padding:.9rem 1.4rem;border-bottom:1px solid var(--line)}
-header h1{font-size:1.05rem;margin:0}
-header nav a{color:var(--dim);text-decoration:none;margin-left:1rem;padding:.35rem .7rem;border-radius:8px}
-header nav a.active{background:var(--card);color:var(--fg)}
-main{max-width:1080px;margin:1.4rem auto;padding:0 1.2rem}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.9rem;margin-bottom:1.4rem}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem}
-.card h3{margin:.1rem 0 .5rem;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
-.card .big{font-size:1.7rem;font-weight:700}
-table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-th,td{padding:.55rem .9rem;text-align:left;border-bottom:1px solid var(--line);font-size:.92rem}
-th{color:var(--dim);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
-tr:last-child td{border-bottom:0}
-.bad{color:var(--bad);font-weight:600}.ok{color:var(--ok)}.dim{color:var(--dim)}
-button,input{font:inherit}
-.btn{background:var(--acc);border:0;color:#fff;padding:.5rem .9rem;border-radius:8px;font-weight:600;cursor:pointer}
-.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
-.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
-input[type=text]{background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:.5rem .7rem;border-radius:8px}
-.row{display:flex;gap:.6rem;align-items:center;margin:.8rem 0;flex-wrap:wrap}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem}
-section{margin-bottom:1.8rem}
-h2{font-size:1rem;margin:1.2rem 0 .6rem}
-.tag{display:inline-block;padding:.1rem .5rem;border-radius:99px;font-size:.75rem;border:1px solid var(--line);color:var(--dim)}
+:root {
+  --bg: #090d16;
+  --surface: #111726;
+  --surface-card: rgba(17, 24, 39, 0.7);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(99, 102, 241, 0.3);
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --dim: #64748b;
+  --primary: #6366f1;
+  --primary-light: #818cf8;
+  --primary-glow: rgba(99, 102, 241, 0.25);
+  --rose: #f43f5e;
+  --rose-glow: rgba(244, 63, 94, 0.2);
+  --emerald: #10b981;
+  --emerald-glow: rgba(16, 185, 129, 0.2);
+  --cyan: #06b6d4;
+  --amber: #f59e0b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+  position: relative;
+}
+body::before {
+  content: '';
+  position: fixed;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(9, 13, 22, 0.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 0.9rem 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: var(--text);
+}
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 14px var(--primary-glow);
+}
+.brand-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.brand-subtitle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--primary-light);
+  background: rgba(99, 102, 241, 0.12);
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(17, 24, 39, 0.6);
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+}
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.45rem 1rem;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+nav a:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+nav a.active {
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--emerald);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  padding: 0.3rem 0.75rem;
+  border-radius: 99px;
+}
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--emerald);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--emerald);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+main {
+  max-width: 1200px;
+  margin: 2rem auto;
+  padding: 0 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* Stat Grid */
+.grid-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+.stat-card {
+  background: var(--surface-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.4rem;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border-hover);
+  box-shadow: 0 12px 30px -10px rgba(0,0,0,0.5);
+}
+.stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.stat-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.stat-icon {
+  font-size: 1.1rem;
+  opacity: 0.8;
+}
+.stat-value {
+  font-size: 1.85rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.stat-value.rose { color: var(--rose); text-shadow: 0 0 16px var(--rose-glow); }
+.stat-value.emerald { color: var(--emerald); text-shadow: 0 0 16px var(--emerald-glow); }
+.stat-value.cyan { color: var(--cyan); }
+.stat-value.primary { color: var(--primary-light); }
+.stat-subtext {
+  font-size: 0.75rem;
+  color: var(--dim);
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* Sections & Cards */
+.section {
+  margin-bottom: 2.2rem;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.search-input {
+  background: rgba(10, 14, 23, 0.6);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 0.9rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  width: 260px;
+  transition: all 0.2s;
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* Table Styles */
+.table-wrapper {
+  background: var(--surface-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+th {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.85rem 1.2rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+td {
+  padding: 0.8rem 1.2rem;
+  font-size: 0.88rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255, 255, 255, 0.02); }
+
+/* Monospace & Badges */
+.mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.83rem;
+  color: #e2e8f0;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.badge-danger {
+  background: rgba(244, 63, 94, 0.12);
+  color: var(--rose);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+.badge-success {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--emerald);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.badge-info {
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--cyan);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+}
+.badge-secondary {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--muted);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+  color: #fff;
+  border: 0;
+  padding: 0.55rem 1.1rem;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px var(--primary-glow);
+}
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.5);
+}
+.btn.ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: none;
+}
+.btn.ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.btn.danger {
+  background: rgba(244, 63, 94, 0.1);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  color: var(--rose);
+  box-shadow: none;
+}
+.btn.danger:hover {
+  background: rgba(244, 63, 94, 0.2);
+  box-shadow: 0 4px 14px var(--rose-glow);
+}
+.btn.sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+/* Form & Input Elements */
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.2rem;
+  flex-wrap: wrap;
+}
+.form-input {
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.6rem 1rem;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  min-width: 280px;
+  transition: all 0.2s;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+/* Cards Grid for Guides */
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.2rem;
+}
+.guide-card {
+  background: var(--surface-card);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.4rem;
+  transition: all 0.25s;
+}
+.guide-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.guide-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.guide-body {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.copy-box {
+  background: rgba(10, 14, 23, 0.8);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.copy-box span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+  word-break: break-all;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  z-index: 100;
+  display: none;
+  place-items: center;
+  padding: 1.5rem;
+}
+.modal-overlay.active { display: grid; }
+.modal {
+  background: #111827;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2rem;
+  width: min(92vw, 440px);
+  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.6);
+}
+.modal-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 0.4rem; }
+.modal-desc { font-size: 0.85rem; color: var(--muted); margin-bottom: 1.4rem; }
+
+.footer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.04);
+  font-size: 0.78rem;
+  color: var(--dim);
+}
 </style>
 <script src="/static/htmx.min.js"></script>
 </head>
 <body>
+
 <header>
-  <h1>Supp <span class="dim">privacy DNS</span></h1>
+  <a href="/?token={{.Token}}" class="brand">
+    <div class="brand-logo">🛡️</div>
+    <div>
+      <div class="brand-title">Supp</div>
+    </div>
+    <span class="brand-subtitle">DNS Shield</span>
+  </a>
+
   <nav>
-    <a href="/?token" class="{{if eq .View "overview"}}active{{end}}">Overview</a>
-    <a href="/clients" class="{{if eq .View "clients"}}active{{end}}">Devices</a>
+    <a href="/?token={{.Token}}" class="{{if eq .View "overview"}}active{{end}}">Overview</a>
+    <a href="/clients?token={{.Token}}" class="{{if eq .View "clients"}}active{{end}}">Devices</a>
+    <a href="/blocklists?token={{.Token}}" class="{{if eq .View "blocklists"}}active{{end}}">Blocklists</a>
+    <a href="/setup?token={{.Token}}" class="{{if eq .View "setup"}}active{{end}}">Setup Guide</a>
   </nav>
-  <span style="margin-left:auto" class="tag">v{{.Stats.Version}}</span>
+
+  <div class="header-meta">
+    <div class="status-pill">
+      <span class="pulse-dot"></span> Active & Protected
+    </div>
+  </div>
 </header>
+
 <main>
 {{if eq .View "overview"}}
   <div hx-get="/live" hx-trigger="every 3s" hx-swap="innerHTML">
     {{template "live" .Stats}}
   </div>
-  <section>
-    <h2>Top blocked domains <span class="dim">(24h, requires query logging)</span></h2>
-    <table><tr><th>Domain</th><th>Queries</th><th>Blocked</th></tr>
-    {{if .Stats.TopBlocked}}{{range .Stats.TopBlocked}}
-      <tr><td class="mono">{{.Domain}}</td><td>{{.Queries}}</td><td class="bad">{{.Blocked}}</td></tr>
-    {{end}}{{else}}<tr><td colspan="3" class="dim">No data — enable log.queries in config to collect domain stats.</td></tr>{{end}}</table>
-  </section>
-  <section>
-    <h2>Recent queries <span class="dim">(live ring, in memory only)</span></h2>
-    <table><tr><th>Time</th><th>Device</th><th>Domain</th><th>Type</th><th>Status</th></tr>
-    {{if .Stats.Recent}}{{range .Stats.Recent}}
-      <tr><td class="dim">{{.TS.Format "15:04:05"}}</td><td>{{.Client}}</td><td class="mono">{{.QName}}</td><td class="dim mono">{{.QType}}</td>
-      <td>{{if .Blocked}}<span class="bad">blocked</span>{{else if .Cached}}<span class="ok">cached</span>{{else}}<span class="dim">resolved</span>{{end}}</td></tr>
-    {{end}}{{else}}<tr><td colspan="5" class="dim">Nothing yet.</td></tr>{{end}}</table>
-  </section>
-{{else if eq .View "clients"}}
-  <div class="row">
-    <input type="text" id="devname" placeholder="device name e.g. pixel-phone">
-    <button class="btn" onclick="addClient()">Add device</button>
-  </div>
-  <section>
-    <h2>Registered devices</h2>
-    <table id="clients"><tr><th>Name</th><th>DoH URL</th><th>Queries 24h</th><th>Blocked 24h</th><th>Last seen</th><th></th></tr>
-    {{$tok := .Token}}
-    {{if .Stats.Clients}}{{range .Stats.Clients}}
-      <tr><td>{{.Name}}</td><td class="mono">/dns/&lt;token&gt;</td><td>{{.Queries}}</td><td class="bad">{{.Blocked}}</td><td class="dim">—</td>
-      <td><button class="btn danger" hx-delete="/api/clients/{{.ID}}" hx-confirm="Remove {{.Name}}?" hx-target="closest tr" hx-swap="outerHTML">Remove</button></td></tr>
-    {{end}}{{else}}<tr><td colspan="6" class="dim">No devices yet — add one to get a private DoH URL.</td></tr>{{end}}</table>
-  </section>
-  <section>
-    <h2>Connect a device</h2>
-    <div class="card">
-      <h3>Android</h3><p>Settings → Network → Private DNS → <span class="mono">dns.yourdomain.com</span></p>
-      <h3>iOS / macOS</h3><p>Install a DoH profile pointing at <span class="mono">https://your-domain/dns-query</span></p>
-      <h3>Windows 11</h3><p>Settings → Network → DNS server assignment → Manual → <span class="mono">DoH</span></p>
-      <h3>Any browser</h3><p>Secure DNS → custom → <span class="mono">https://your-domain/dns-query</span></p>
-      <h3>TV / console / IoT</h3><p>Set DNS to this server's IP (port 53).</p>
+
+  <!-- Top Blocked Domains -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">
+        <span>🚫 Top Blocked Domains</span>
+        <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(24h rolling)</span>
+      </div>
+      <input type="text" class="search-input" placeholder="Filter domains..." onkeyup="filterTable(this, 'tbl-topblocked')">
     </div>
-  </section>
+    <div class="table-wrapper">
+      <table id="tbl-topblocked">
+        <thead>
+          <tr>
+            <th style="width: 50px">#</th>
+            <th>Domain</th>
+            <th>Total Queries</th>
+            <th>Blocked Hits</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{if .Stats.TopBlocked}}
+          {{range $idx, $row := .Stats.TopBlocked}}
+          <tr>
+            <td style="color:var(--dim); font-size:0.8rem">{{add1 $idx}}</td>
+            <td class="mono">{{$row.Domain}}</td>
+            <td>{{$row.Queries}}</td>
+            <td><span class="badge badge-danger">{{$row.Blocked}}</span></td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr><td colspan="4" style="text-align:center; color:var(--dim); padding: 2rem">No domain data yet — queries are logged securely when <code>log.queries = true</code>.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Live Recent Queries Ring -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">
+        <span>⚡ Recent Live Queries</span>
+        <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(In-Memory Ring Buffer)</span>
+      </div>
+      <input type="text" class="search-input" placeholder="Search queries..." onkeyup="filterTable(this, 'tbl-recent')">
+    </div>
+    <div class="table-wrapper">
+      <table id="tbl-recent">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Device</th>
+            <th>Query Name</th>
+            <th>Type</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{if .Stats.Recent}}
+          {{range .Stats.Recent}}
+          <tr>
+            <td style="color:var(--dim)" class="mono">{{.TS.Format "15:04:05"}}</td>
+            <td><span class="badge badge-secondary">{{if .Client}}{{.Client}}{{else}}Default Client{{end}}</span></td>
+            <td class="mono">{{.QName}}</td>
+            <td class="mono" style="color:var(--dim)">{{.QType}}</td>
+            <td>
+              {{if .Blocked}}<span class="badge badge-danger">BLOCKED</span>
+              {{else if .Cached}}<span class="badge badge-success">CACHED</span>
+              {{else}}<span class="badge badge-info">RESOLVED</span>{{end}}
+            </td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr><td colspan="5" style="text-align:center; color:var(--dim); padding: 2rem">No recent queries in memory buffer.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{{else if eq .View "clients"}}
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">📱 Registered Device Identities</div>
+      <button class="btn" onclick="openAddDeviceModal()">+ Add New Device</button>
+    </div>
+
+    <div class="table-wrapper">
+      <table id="tbl-clients">
+        <thead>
+          <tr>
+            <th>Device Name</th>
+            <th>Per-Device DoH Endpoint</th>
+            <th>Queries (24h)</th>
+            <th>Blocked (24h)</th>
+            <th style="width: 100px">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{$tok := .Token}}
+        {{if .Stats.Clients}}
+          {{range .Stats.Clients}}
+          <tr>
+            <td style="font-weight: 700">{{.Name}}</td>
+            <td class="mono">
+              <div class="copy-box" style="margin:0; padding:0.35rem 0.6rem">
+                <span>/dns/{{.Token}}</span>
+                <button class="btn ghost sm" onclick="copyText(location.origin + '/dns/{{.Token}}', this)">Copy DoH</button>
+              </div>
+            </td>
+            <td>{{.Queries}}</td>
+            <td><span class="badge badge-danger">{{.Blocked}}</span></td>
+            <td>
+              <button class="btn danger sm" hx-delete="/api/clients/{{.ID}}" hx-confirm="Revoke access for {{.Name}}?" hx-target="closest tr" hx-swap="outerHTML">Revoke</button>
+            </td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr><td colspan="5" style="text-align:center; color:var(--dim); padding: 2.5rem">No device tokens created yet. Click "+ Add New Device" to generate a secret DoH URL for your phone or browser.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{{else if eq .View "blocklists"}}
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">🚫 Active Ad & Tracker Blocklists</div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Source Name</th>
+            <th>Download URL</th>
+            <th>Loaded Rules</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{if .Stats.Sources}}
+          {{range .Stats.Sources}}
+          <tr>
+            <td style="font-weight: 700">{{.Name}}</td>
+            <td class="mono" style="color:var(--muted)">{{.URL}}</td>
+            <td style="font-weight: 700">{{if ge .Entries 0}}{{.Entries}}{{else}}0{{end}}</td>
+            <td>
+              {{if .Error}}<span class="badge badge-danger">FAILED (Using Cache)</span>
+              {{else}}<span class="badge badge-success">ACTIVE</span>{{end}}
+            </td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr><td colspan="4" style="text-align:center; color:var(--dim); padding: 2rem">No blocklist sources configured in <code>config.toml</code>.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{{else if eq .View "setup"}}
+
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">⚙️ Quick Connection Guide</div>
+    </div>
+    <div class="guide-grid">
+      <div class="guide-card">
+        <div class="guide-title">🤖 Android 9+ (Private DNS)</div>
+        <div class="guide-body">
+          Go to Settings → Network & Internet → Private DNS → Private DNS provider hostname:
+          <div class="copy-box">
+            <span id="txt-android">dns.srbh.io</span>
+            <button class="btn ghost sm" onclick="copyText('dns.srbh.io', this)">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-title">🌐 Web Browsers (Chrome, Firefox, Brave)</div>
+        <div class="guide-body">
+          Go to Settings → Privacy & Security → Use Secure DNS → Custom provider:
+          <div class="copy-box">
+            <span>https://dns.srbh.io/dns-query</span>
+            <button class="btn ghost sm" onclick="copyText('https://dns.srbh.io/dns-query', this)">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-title">💻 Linux (systemd-resolved)</div>
+        <div class="guide-body">
+          Set DNS in <code>/etc/systemd/resolved.conf</code>:
+          <div class="copy-box">
+            <span>DNS=dns.srbh.io DNSOverTLS=yes</span>
+            <button class="btn ghost sm" onclick="copyText('DNS=dns.srbh.io\nDNSOverTLS=yes', this)">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="guide-card">
+        <div class="guide-title">🪟 Windows 11 (DoH)</div>
+        <div class="guide-body">
+          Settings → Network & Internet → Wi-Fi / Ethernet → Edit DNS server assignment → Manual → Preferred DNS: <span class="mono">34.10.215.21</span> (Enable DoH).
+        </div>
+      </div>
+    </div>
+  </div>
+
 {{end}}
 </main>
+
+<!-- Add Device Modal -->
+<div class="modal-overlay" id="addDeviceModal">
+  <div class="modal">
+    <div class="modal-title">Add New Device</div>
+    <div class="modal-desc">Create a secret per-device token for individualized stats and instant access control.</div>
+    <div class="form-row" style="flex-direction:column; align-items:stretch">
+      <input type="text" id="devname" class="form-input" placeholder="Device Name (e.g. Saurabh-Pixel7)" autofocus>
+      <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.5rem">
+        <button class="btn ghost" onclick="closeAddDeviceModal()">Cancel</button>
+        <button class="btn" onclick="submitAddDevice()">Generate Token</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-function addClient(){
-  const n=document.getElementById('devname').value.trim();
-  if(!n)return alert('name required');
-  fetch('/api/clients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})})
-    .then(r=>{if(!r.ok)throw 0;return r.json()})
-    .then(c=>{prompt('DoH URL for this device (copy now, token shown once):',location.origin+'/dns/'+c.token);location.reload()})
-    .catch(()=>alert('failed'));
+function openAddDeviceModal() {
+  document.getElementById('addDeviceModal').classList.add('active');
+  document.getElementById('devname').focus();
+}
+function closeAddDeviceModal() {
+  document.getElementById('addDeviceModal').classList.remove('active');
+}
+function submitAddDevice() {
+  const n = document.getElementById('devname').value.trim();
+  if(!n) return alert('Please enter a device name.');
+  fetch('/api/clients', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: n })
+  })
+  .then(r => { if(!r.ok) throw new Error('failed'); return r.json(); })
+  .then(c => {
+    alert('Device created!\n\nDoH URL for ' + c.name + ':\n' + location.origin + '/dns/' + c.token);
+    location.reload();
+  })
+  .catch(() => alert('Failed to create device.'));
+}
+function copyText(txt, btn) {
+  navigator.clipboard.writeText(txt).then(() => {
+    const orig = btn.innerText;
+    btn.innerText = 'Copied!';
+    btn.style.color = '#10b981';
+    setTimeout(() => { btn.innerText = orig; btn.style.color = ''; }, 2000);
+  });
+}
+function filterTable(input, tableId) {
+  const q = input.value.toLowerCase();
+  const rows = document.querySelectorAll('#' + tableId + ' tbody tr');
+  rows.forEach(r => {
+    const text = r.innerText.toLowerCase();
+    r.style.display = text.includes(q) ? '' : 'none';
+  });
 }
 </script>
-</body></html>{{end}}
+
+</body>
+</html>
+{{end}}
 
 {{define "live"}}
-<div class="grid">
-  <div class="card"><h3>Queries (uptime)</h3><div class="big">{{.QueriesTotal}}</div></div>
-  <div class="card"><h3>Blocked</h3><div class="big bad">{{.BlockedTotal}}</div></div>
-  <div class="card"><h3>Blocked %</h3><div class="big">{{printf "%.1f" .BlockPercent}}%</div></div>
-  <div class="card"><h3>Cache hits</h3><div class="big ok">{{.CachedTotal}}</div></div>
-  <div class="card"><h3>Blocklist size</h3><div class="big">{{.BlockedDomains}}</div></div>
-  <div class="card"><h3>Memory</h3><div class="big">{{printf "%.0f" .MemAllocMB}}<span class="dim" style="font-size:1rem"> MB</span></div></div>
+<div class="grid-stats">
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Total Queries</span>
+      <span class="stat-icon">⚡</span>
+    </div>
+    <div class="stat-value primary">{{.QueriesTotal}}</div>
+    <div class="stat-subtext">Uptime {{.Uptime}}</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Blocked Ads</span>
+      <span class="stat-icon">🛡️</span>
+    </div>
+    <div class="stat-value rose">{{.BlockedTotal}}</div>
+    <div class="stat-subtext">Threats & trackers</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Block Rate</span>
+      <span class="stat-icon">📊</span>
+    </div>
+    <div class="stat-value rose">{{printf "%.1f" .BlockPercent}}%</div>
+    <div class="stat-subtext">Filtered traffic</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Cache Hits</span>
+      <span class="stat-icon">🚀</span>
+    </div>
+    <div class="stat-value emerald">{{.CachedTotal}}</div>
+    <div class="stat-subtext">Zero-latency responses</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Blocklist Rules</span>
+      <span class="stat-icon">🚫</span>
+    </div>
+    <div class="stat-value cyan">{{.BlockedDomains}}</div>
+    <div class="stat-subtext">Active domain rules</div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">RAM Usage</span>
+      <span class="stat-icon">💻</span>
+    </div>
+    <div class="stat-value primary">{{printf "%.0f" .MemAllocMB}}<span style="font-size:1rem; font-weight:500"> MB</span></div>
+    <div class="stat-subtext">{{.NumGoroutine}} active goroutines</div>
+  </div>
 </div>
-<div class="dim" style="margin:-0.6rem 0 1rem">uptime {{.Uptime}} · goroutines {{.NumGoroutine}} · v{{.Version}}</div>
 {{end}}

@@ -45,6 +45,8 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /{$}", s.pageOverview)
 	m.HandleFunc("GET /live", s.pageLive)
 	m.HandleFunc("GET /clients", s.pageClients)
+	m.HandleFunc("GET /blocklists", s.pageBlocklists)
+	m.HandleFunc("GET /setup", s.pageSetup)
 	m.HandleFunc("GET /api/stats", s.apiStats)
 	m.HandleFunc("GET /api/clients", s.apiClients)
 	m.HandleFunc("POST /api/clients", s.apiClientCreate)
@@ -218,6 +220,16 @@ func (s *Server) pageLive(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pageClients(w http.ResponseWriter, r *http.Request) {
 	v := s.stats(r)
 	render(w, pageData{View: "clients", Stats: &v, Token: s.deps.Token})
+}
+
+func (s *Server) pageBlocklists(w http.ResponseWriter, r *http.Request) {
+	v := s.stats(r)
+	render(w, pageData{View: "blocklists", Stats: &v, Token: s.deps.Token})
+}
+
+func (s *Server) pageSetup(w http.ResponseWriter, r *http.Request) {
+	v := s.stats(r)
+	render(w, pageData{View: "setup", Stats: &v, Token: s.deps.Token})
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -47,9 +47,9 @@ block_ipv6 = true
 response_ip = "0.0.0.0"
 
 [[block.lists]]
-name = "hagezi-normal"
-url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/native.txt"
-format = "domains"
+name = "stevenblack"
+url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+format = "hosts"
 
 # Optional extra lists (uncomment to enable):
 # [[block.lists]]
