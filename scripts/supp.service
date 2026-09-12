@@ -8,6 +8,7 @@ Type=simple
 ExecStart=/usr/local/bin/supp server --config /etc/supp/config.toml
 Restart=on-failure
 RestartSec=3
+TimeoutStopSec=10s
 User=root
 
 # Hardening: needs NET_ADMIN-free but privileged ports, so no caps drop.

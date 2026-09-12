@@ -15,7 +15,8 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 if command -v systemctl >/dev/null 2>&1; then
-  systemctl stop supp 2>/dev/null || true
+  systemctl kill -s SIGKILL supp 2>/dev/null || true
+  systemctl stop --no-block supp 2>/dev/null || true
 fi
 
 # 2. Download binary
@@ -54,6 +55,7 @@ Type=simple
 ExecStart=/usr/local/bin/supp server --config /etc/supp/config.toml
 Restart=on-failure
 RestartSec=3
+TimeoutStopSec=10s
 User=root
 NoNewPrivileges=yes
 ProtectSystem=strict
