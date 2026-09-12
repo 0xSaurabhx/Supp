@@ -10,7 +10,10 @@ DATA_DIR=/var/lib/supp
 
 echo "==> Supp installer"
 
-# 1. Stop existing service if present
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Error: install.sh must be run as root. Please run: curl -fsSL ... | sudo sh" >&2
+  exit 1
+fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl stop supp 2>/dev/null || true
 fi

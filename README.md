@@ -20,7 +20,7 @@ admin  ──► token-gated dashboard ──► stats · devices · live querie
 Requirements: a VPS with ports 53/853/443 free, and (for automatic HTTPS) a DNS A/AAAA record pointing at it.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0xsaurabhx/Supp/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/0xsaurabhx/Supp/main/install.sh | sudo sh
 ```
 
 or grab a prebuilt binary from [Releases](https://github.com/0xsaurabhx/Supp/releases) and install manually:
