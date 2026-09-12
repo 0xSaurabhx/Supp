@@ -184,7 +184,7 @@ func runServer(cfg *config.Config, log *slog.Logger) error {
 	var certs *ops.TLSCerts
 	needTLS := cfg.DNS.Listen.DoT != "" || cfg.DNS.Listen.DoH != ""
 	if needTLS {
-		certs, err = ops.GetCerts(cfg, log)
+		certs, err = ops.GetCerts(ctx, cfg, log)
 		if err != nil {
 			return err
 		}

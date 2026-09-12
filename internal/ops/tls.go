@@ -3,6 +3,7 @@
 package ops
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -14,6 +15,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,8 +36,8 @@ type TLSCerts struct {
 }
 
 // GetCerts returns autocert-managed certificates for the configured domain,
-// or a self-signed certificate when no domain is set (local mode).
-func GetCerts(cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
+// or a self-signed certificate when no domain is set or ACME fails.
+func GetCerts(ctx context.Context, cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
 	if cfg.Server.Domain == "" {
 		log.Warn("no domain configured; generating self-signed certificate (clients must skip TLS verification)")
 		c, err := selfSigned("supp.local")
@@ -56,24 +58,53 @@ func GetCerts(cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
 		HostPolicy: autocert.HostWhitelist(host),
 		Email:      acmeEmail(),
 	}
+
+	// Fast path: try cached cert first.
 	cert, err := mgr.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
-	if err != nil {
-		// First run: block briefly while the ACME order completes, so both
-		// DoH and DoT can start with the real certificate.
-		log.Info("obtaining certificate (may take ~20s)", "domain", host)
-		deadline := time.Now().Add(120 * time.Second)
-		for time.Now().Before(deadline) {
-			cert, err = mgr.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
-			if err == nil {
-				break
-			}
-			time.Sleep(2 * time.Second)
+	if err == nil {
+		return &TLSCerts{Cert: cert, Domain: host, Manager: mgr}, nil
+	}
+
+	// Start HTTP-01 challenge server on :80 to answer ACME validation.
+	acmeSrv := &http.Server{
+		Addr:    ":80",
+		Handler: mgr.HTTPHandler(nil),
+	}
+	go func() {
+		_ = acmeSrv.ListenAndServe()
+	}()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = acmeSrv.Shutdown(shutdownCtx)
+		cancel()
+	}()
+
+	log.Info("obtaining certificate (may take ~20s)", "domain", host)
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
 		}
-		if err != nil {
-			return nil, fmt.Errorf("could not obtain certificate for %s: %w (check DNS A record + ports 80/443 reachable from the internet)", host, err)
+		cert, err = mgr.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
+		if err == nil {
+			log.Info("certificate obtained successfully", "domain", host)
+			return &TLSCerts{Cert: cert, Domain: host, Manager: mgr}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
 		}
 	}
-	return &TLSCerts{Cert: cert, Domain: host, Manager: mgr}, nil
+
+	log.Warn("could not obtain ACME certificate; falling back to self-signed certificate", "err", err)
+	fallbackCert, fallbackErr := selfSigned(host)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("self-signed fallback failed: %w", fallbackErr)
+	}
+	return &TLSCerts{Cert: fallbackCert, Domain: host, SelfSign: true, Manager: mgr}, nil
 }
 
 // ACMEHosts exposes the whitelist for the HTTP-01 challenge server.
