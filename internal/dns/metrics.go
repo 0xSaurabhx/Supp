@@ -97,7 +97,10 @@ func (m *Metrics) Snapshot() Snapshot {
 		StaleTotal:   m.staleTotal,
 		Top:          make([]TopEntry, 0, len(m.byDomain)),
 		Clients:      make([]ClientEntry, 0, len(m.byClient)),
-		Recent:       append([]RecentQuery(nil), m.recent...),
+		Recent:       make([]RecentQuery, len(m.recent)),
+	}
+	for i, q := range m.recent {
+		snap.Recent[len(m.recent)-1-i] = q
 	}
 	for d, c := range m.byDomain {
 		snap.Top = append(snap.Top, TopEntry{Domain: d, Queries: c.queries, Blocked: c.blocked})

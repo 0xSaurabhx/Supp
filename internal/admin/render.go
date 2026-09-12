@@ -54,7 +54,7 @@ button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99, 102,
 button:active { transform: translateY(0); }
 </style></head><body>
 <div class="login-card">
-  <div class="logo-icon">🛡️</div>
+  <div class="logo-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
   <h2>Supp Privacy DNS</h2>
   <p>Enter the admin token configured in <code>/etc/supp/config.toml</code> to access your dashboard.</p>
   <form onsubmit="document.cookie='supp_admin='+encodeURIComponent(this.t.value)+';path=/;max-age=43200';location.reload();return false">

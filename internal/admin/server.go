@@ -155,6 +155,16 @@ func (s *Server) stats(r *http.Request) statsView {
 	if s.deps.Store != nil {
 		v.TopBlocked, _ = s.deps.Store.TopDomains(since, 15, true)
 		v.Clients, _ = s.deps.Store.PerClient(since)
+		qStore, bStore := s.deps.Store.Totals(time.Time{})
+		if qStore > v.QueriesTotal {
+			v.QueriesTotal = qStore
+		}
+		if bStore > v.BlockedTotal {
+			v.BlockedTotal = bStore
+		}
+	}
+	if v.QueriesTotal > 0 {
+		v.BlockPercent = float64(v.BlockedTotal) / float64(v.QueriesTotal) * 100
 	}
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
