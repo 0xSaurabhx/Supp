@@ -184,20 +184,26 @@ func runServer(cfg *config.Config, log *slog.Logger) error {
 	var certs *ops.TLSCerts
 	needTLS := cfg.DNS.Listen.DoT != "" || cfg.DNS.Listen.DoH != ""
 	if needTLS {
-		certs, err = ops.GetCerts(ctx, cfg, log)
+		certs, err = ops.GetCerts(cfg, log)
 		if err != nil {
 			return err
 		}
 	}
 
+	var tlsFunc func(nextProtos ...string) *tls.Config
+	if certs != nil {
+		tlsFunc = certs.TLSConfig
+	}
+
 	// DNS server.
 	srv, err := dns.NewServer(dns.Config{
-		ListenPlain:  cfg.DNS.Listen.Plain,
-		ListenDoT:    cfg.DNS.Listen.DoT,
-		ListenDoH:    cfg.DNS.Listen.DoH,
-		DotCert:      certPtr(certs),
-		DoHCert:      certPtr(certs),
-		Domain:       cfg.Server.Domain,
+		ListenPlain:   cfg.DNS.Listen.Plain,
+		ListenDoT:     cfg.DNS.Listen.DoT,
+		ListenDoH:     cfg.DNS.Listen.DoH,
+		DotCert:       certPtr(certs),
+		DoHCert:       certPtr(certs),
+		TLSConfigFunc: tlsFunc,
+		Domain:        cfg.Server.Domain,
 		PerDeviceDoH: true, // token-gated paths; work with or without a domain
 		Upstreams:    upstreamURLs(cfg),
 		Weights:      upstreamWeights(cfg),

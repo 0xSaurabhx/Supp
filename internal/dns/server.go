@@ -60,12 +60,13 @@ type Server struct {
 
 // Config carries resolved runtime settings for the DNS server.
 type Config struct {
-	ListenPlain  string // "0.0.0.0:53" or "" to disable
-	ListenDoT    string // "0.0.0.0:853" or ""
-	ListenDoH    string // "0.0.0.0:443" or ""
-	DotCert      *tls.Certificate
-	DoHCert      *tls.Certificate
-	Domain       string // public name for per-device DoH paths
+	ListenPlain   string // "0.0.0.0:53" or "" to disable
+	ListenDoT     string // "0.0.0.0:853" or ""
+	ListenDoH     string // "0.0.0.0:443" or ""
+	DotCert       *tls.Certificate
+	DoHCert       *tls.Certificate
+	TLSConfigFunc func(nextProtos ...string) *tls.Config
+	Domain        string // public name for per-device DoH paths
 	PerDeviceDoH bool   // enable /dns/<token> paths
 	Upstreams    []string
 	Weights      []int
@@ -145,11 +146,16 @@ func (s *Server) Run(ctx context.Context) error {
 		s.log.Info("plain dns listening", "addr", s.cfg.ListenPlain)
 	}
 	// DoT.
-	if s.cfg.ListenDoT != "" && s.cfg.DotCert != nil {
-		tlscfg := &tls.Config{
-			Certificates: []tls.Certificate{*s.cfg.DotCert},
-			MinVersion:   tls.VersionTLS12,
-			NextProtos:   []string{"dot"},
+	if s.cfg.ListenDoT != "" && (s.cfg.TLSConfigFunc != nil || s.cfg.DotCert != nil) {
+		var tlscfg *tls.Config
+		if s.cfg.TLSConfigFunc != nil {
+			tlscfg = s.cfg.TLSConfigFunc("dot")
+		} else {
+			tlscfg = &tls.Config{
+				Certificates: []tls.Certificate{*s.cfg.DotCert},
+				MinVersion:   tls.VersionTLS12,
+				NextProtos:   []string{"dot"},
+			}
 		}
 		ln, err := tls.Listen("tcp", s.cfg.ListenDoT, tlscfg)
 		if err != nil {
@@ -161,19 +167,25 @@ func (s *Server) Run(ctx context.Context) error {
 		s.log.Info("dot listening", "addr", s.cfg.ListenDoT)
 	}
 	// DoH via net/http.
-	if s.cfg.ListenDoH != "" && s.cfg.DoHCert != nil {
+	if s.cfg.ListenDoH != "" && (s.cfg.TLSConfigFunc != nil || s.cfg.DoHCert != nil) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/dns-query", s.handleDoH)
 		if s.perDeviceDoH {
 			mux.HandleFunc("/dns/", s.handleDoH)
 		}
-		s.http = &http.Server{
-			Addr:    s.cfg.ListenDoH,
-			Handler: mux,
-			TLSConfig: &tls.Config{
+		var tlscfg *tls.Config
+		if s.cfg.TLSConfigFunc != nil {
+			tlscfg = s.cfg.TLSConfigFunc("h2", "http/1.1")
+		} else {
+			tlscfg = &tls.Config{
 				Certificates: []tls.Certificate{*s.cfg.DoHCert},
 				MinVersion:   tls.VersionTLS12,
-			},
+			}
+		}
+		s.http = &http.Server{
+			Addr:              s.cfg.ListenDoH,
+			Handler:           mux,
+			TLSConfig:         tlscfg,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
 		ln, err := tls.Listen("tcp", s.cfg.ListenDoH, s.http.TLSConfig)

@@ -3,7 +3,6 @@
 package ops
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -11,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math/big"
 	"net"
@@ -35,9 +33,8 @@ type TLSCerts struct {
 	Manager  *autocert.Manager
 }
 
-// GetCerts returns autocert-managed certificates for the configured domain,
-// or a self-signed certificate when no domain is set or ACME fails.
-func GetCerts(ctx context.Context, cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
+// GetCerts initializes autocert for the configured domain (or self-signed cert for local mode).
+func GetCerts(cfg *config.Config, log *slog.Logger) (*TLSCerts, error) {
 	if cfg.Server.Domain == "" {
 		log.Warn("no domain configured; generating self-signed certificate (clients must skip TLS verification)")
 		c, err := selfSigned("supp.local")
@@ -59,68 +56,38 @@ func GetCerts(ctx context.Context, cfg *config.Config, log *slog.Logger) (*TLSCe
 		Email:      acmeEmail(),
 	}
 
-	// Fast path: try cached cert first.
-	cert, err := mgr.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
-	if err == nil {
-		return &TLSCerts{Cert: cert, Domain: host, Manager: mgr}, nil
-	}
-
-	// Start HTTP-01 challenge server on :80 to answer ACME validation.
-	acmeSrv := &http.Server{
-		Addr:    ":80",
-		Handler: mgr.HTTPHandler(nil),
-	}
+	// Start background HTTP-01 challenge server on :80.
 	go func() {
-		_ = acmeSrv.ListenAndServe()
-	}()
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		_ = acmeSrv.Shutdown(shutdownCtx)
-		cancel()
+		s := &http.Server{
+			Addr:    ":80",
+			Handler: mgr.HTTPHandler(nil),
+		}
+		if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Warn("acme http-01 server on :80 exited", "err", err)
+		}
 	}()
 
-	log.Info("obtaining certificate (may take ~20s)", "domain", host)
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
-		}
-		cert, err = mgr.GetCertificate(&tls.ClientHelloInfo{ServerName: host})
-		if err == nil {
-			log.Info("certificate obtained successfully", "domain", host)
-			return &TLSCerts{Cert: cert, Domain: host, Manager: mgr}, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(2 * time.Second):
-		}
-	}
-
-	log.Warn("could not obtain ACME certificate; falling back to self-signed certificate", "err", err)
-	fallbackCert, fallbackErr := selfSigned(host)
-	if fallbackErr != nil {
-		return nil, fmt.Errorf("self-signed fallback failed: %w", fallbackErr)
-	}
-	return &TLSCerts{Cert: fallbackCert, Domain: host, SelfSign: true, Manager: mgr}, nil
+	log.Info("autocert TLS manager initialized for domain", "domain", host)
+	return &TLSCerts{Domain: host, Manager: mgr}, nil
 }
 
-// ACMEHosts exposes the whitelist for the HTTP-01 challenge server.
-func (t *TLSCerts) ACMEHosts() []string {
-	if t == nil || t.Domain == "" || t.SelfSign {
-		return nil
+// TLSConfig returns a *tls.Config for the specified NextProtos (ALPN).
+func (t *TLSCerts) TLSConfig(nextProtos ...string) *tls.Config {
+	cfg := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		NextProtos: nextProtos,
 	}
-	return []string{t.Domain}
+	if t != nil && t.Manager != nil {
+		cfg.GetCertificate = t.Manager.GetCertificate
+	} else if t != nil && t.Cert != nil {
+		cfg.Certificates = []tls.Certificate{*t.Cert}
+	}
+	return cfg
 }
 
 func acmeEmail() string {
 	return os.Getenv("SUPP_ACME_EMAIL")
 }
-
-// errNoACME is returned when a cert is requested but ACME cannot run.
-var errNoACME = errors.New("acme unavailable")
 
 // selfSigned creates a throwaway certificate for local development.
 func selfSigned(host string) (*tls.Certificate, error) {
