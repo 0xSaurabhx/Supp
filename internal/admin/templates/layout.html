@@ -1,0 +1,115 @@
+{{define "layout.html"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supp Dashboard</title>
+<style>
+:root{--bg:#0b0f14;--card:#11161d;--line:#2d333b;--fg:#e6edf3;--dim:#8b949e;--acc:#2f81f7;--bad:#f85149;--ok:#3fb950}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--fg)}
+header{display:flex;align-items:center;gap:1rem;padding:.9rem 1.4rem;border-bottom:1px solid var(--line)}
+header h1{font-size:1.05rem;margin:0}
+header nav a{color:var(--dim);text-decoration:none;margin-left:1rem;padding:.35rem .7rem;border-radius:8px}
+header nav a.active{background:var(--card);color:var(--fg)}
+main{max-width:1080px;margin:1.4rem auto;padding:0 1.2rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.9rem;margin-bottom:1.4rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem}
+.card h3{margin:.1rem 0 .5rem;font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+.card .big{font-size:1.7rem;font-weight:700}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th,td{padding:.55rem .9rem;text-align:left;border-bottom:1px solid var(--line);font-size:.92rem}
+th{color:var(--dim);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:0}
+.bad{color:var(--bad);font-weight:600}.ok{color:var(--ok)}.dim{color:var(--dim)}
+button,input{font:inherit}
+.btn{background:var(--acc);border:0;color:#fff;padding:.5rem .9rem;border-radius:8px;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+.btn.danger{background:transparent;border:1px solid var(--bad);color:var(--bad)}
+input[type=text]{background:var(--bg);border:1px solid var(--line);color:var(--fg);padding:.5rem .7rem;border-radius:8px}
+.row{display:flex;gap:.6rem;align-items:center;margin:.8rem 0;flex-wrap:wrap}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem}
+section{margin-bottom:1.8rem}
+h2{font-size:1rem;margin:1.2rem 0 .6rem}
+.tag{display:inline-block;padding:.1rem .5rem;border-radius:99px;font-size:.75rem;border:1px solid var(--line);color:var(--dim)}
+</style>
+<script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>Supp <span class="dim">privacy DNS</span></h1>
+  <nav>
+    <a href="/?token" class="{{if eq .View "overview"}}active{{end}}">Overview</a>
+    <a href="/clients" class="{{if eq .View "clients"}}active{{end}}">Devices</a>
+  </nav>
+  <span style="margin-left:auto" class="tag">v{{.Stats.Version}}</span>
+</header>
+<main>
+{{if eq .View "overview"}}
+  <div hx-get="/live" hx-trigger="every 3s" hx-swap="innerHTML">
+    {{template "live" .Stats}}
+  </div>
+  <section>
+    <h2>Top blocked domains <span class="dim">(24h, requires query logging)</span></h2>
+    <table><tr><th>Domain</th><th>Queries</th><th>Blocked</th></tr>
+    {{if .Stats.TopBlocked}}{{range .Stats.TopBlocked}}
+      <tr><td class="mono">{{.Domain}}</td><td>{{.Queries}}</td><td class="bad">{{.Blocked}}</td></tr>
+    {{end}}{{else}}<tr><td colspan="3" class="dim">No data — enable log.queries in config to collect domain stats.</td></tr>{{end}}</table>
+  </section>
+  <section>
+    <h2>Recent queries <span class="dim">(live ring, in memory only)</span></h2>
+    <table><tr><th>Time</th><th>Device</th><th>Domain</th><th>Type</th><th>Status</th></tr>
+    {{if .Stats.Recent}}{{range .Stats.Recent}}
+      <tr><td class="dim">{{.TS.Format "15:04:05"}}</td><td>{{.Client}}</td><td class="mono">{{.QName}}</td><td class="dim mono">{{.QType}}</td>
+      <td>{{if .Blocked}}<span class="bad">blocked</span>{{else if .Cached}}<span class="ok">cached</span>{{else}}<span class="dim">resolved</span>{{end}}</td></tr>
+    {{end}}{{else}}<tr><td colspan="5" class="dim">Nothing yet.</td></tr>{{end}}</table>
+  </section>
+{{else if eq .View "clients"}}
+  <div class="row">
+    <input type="text" id="devname" placeholder="device name e.g. pixel-phone">
+    <button class="btn" onclick="addClient()">Add device</button>
+  </div>
+  <section>
+    <h2>Registered devices</h2>
+    <table id="clients"><tr><th>Name</th><th>DoH URL</th><th>Queries 24h</th><th>Blocked 24h</th><th>Last seen</th><th></th></tr>
+    {{$tok := .Token}}
+    {{if .Stats.Clients}}{{range .Stats.Clients}}
+      <tr><td>{{.Name}}</td><td class="mono">/dns/&lt;token&gt;</td><td>{{.Queries}}</td><td class="bad">{{.Blocked}}</td><td class="dim">—</td>
+      <td><button class="btn danger" hx-delete="/api/clients/{{.ID}}" hx-confirm="Remove {{.Name}}?" hx-target="closest tr" hx-swap="outerHTML">Remove</button></td></tr>
+    {{end}}{{else}}<tr><td colspan="6" class="dim">No devices yet — add one to get a private DoH URL.</td></tr>{{end}}</table>
+  </section>
+  <section>
+    <h2>Connect a device</h2>
+    <div class="card">
+      <h3>Android</h3><p>Settings → Network → Private DNS → <span class="mono">dns.yourdomain.com</span></p>
+      <h3>iOS / macOS</h3><p>Install a DoH profile pointing at <span class="mono">https://your-domain/dns-query</span></p>
+      <h3>Windows 11</h3><p>Settings → Network → DNS server assignment → Manual → <span class="mono">DoH</span></p>
+      <h3>Any browser</h3><p>Secure DNS → custom → <span class="mono">https://your-domain/dns-query</span></p>
+      <h3>TV / console / IoT</h3><p>Set DNS to this server's IP (port 53).</p>
+    </div>
+  </section>
+{{end}}
+</main>
+<script>
+function addClient(){
+  const n=document.getElementById('devname').value.trim();
+  if(!n)return alert('name required');
+  fetch('/api/clients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})})
+    .then(r=>{if(!r.ok)throw 0;return r.json()})
+    .then(c=>{prompt('DoH URL for this device (copy now, token shown once):',location.origin+'/dns/'+c.token);location.reload()})
+    .catch(()=>alert('failed'));
+}
+</script>
+</body></html>{{end}}
+
+{{define "live"}}
+<div class="grid">
+  <div class="card"><h3>Queries (uptime)</h3><div class="big">{{.QueriesTotal}}</div></div>
+  <div class="card"><h3>Blocked</h3><div class="big bad">{{.BlockedTotal}}</div></div>
+  <div class="card"><h3>Blocked %</h3><div class="big">{{printf "%.1f" .BlockPercent}}%</div></div>
+  <div class="card"><h3>Cache hits</h3><div class="big ok">{{.CachedTotal}}</div></div>
+  <div class="card"><h3>Blocklist size</h3><div class="big">{{.BlockedDomains}}</div></div>
+  <div class="card"><h3>Memory</h3><div class="big">{{printf "%.0f" .MemAllocMB}}<span class="dim" style="font-size:1rem"> MB</span></div></div>
+</div>
+<div class="dim" style="margin:-0.6rem 0 1rem">uptime {{.Uptime}} · goroutines {{.NumGoroutine}} · v{{.Version}}</div>
+{{end}}

@@ -1,0 +1,13 @@
+/supp
+/supp-*
+/dist/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+/data/
+/certs/
+*.conf
+!config.example.toml
+.DS_Store
+.freebuff
