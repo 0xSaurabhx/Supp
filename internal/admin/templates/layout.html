@@ -500,6 +500,7 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
     <a href="/?token={{.Token}}" class="{{if eq .View "overview"}}active{{end}}">Overview</a>
     <a href="/clients?token={{.Token}}" class="{{if eq .View "clients"}}active{{end}}">Devices</a>
     <a href="/blocklists?token={{.Token}}" class="{{if eq .View "blocklists"}}active{{end}}">Blocklists</a>
+    <a href="/wg?token={{.Token}}" class="{{if eq .View "wg"}}active{{end}}">VPN</a>
     <a href="/setup?token={{.Token}}" class="{{if eq .View "setup"}}active{{end}}">Setup Guide</a>
   </nav>
 
@@ -599,6 +600,81 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
     </div>
   </div>
 
+{{else if eq .View "wg"}}
+
+{{if .WG}}
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">WireGuard VPN</div>
+      <button class="btn" onclick="openAddPeerModal()">+ Add Peer</button>
+    </div>
+    <div class="guide-grid" style="margin-bottom:1.2rem">
+      <div class="guide-card">
+        <div class="guide-title">Endpoint</div>
+        <div class="guide-body mono">{{.WG.Endpoint}}</div>
+      </div>
+      <div class="guide-card">
+        <div class="guide-title">Interface</div>
+        <div class="guide-body mono">{{.WG.Interface}} · {{.WG.Subnet}} (server {{.WG.ServerIP}})</div>
+      </div>
+      <div class="guide-card">
+        <div class="guide-title">Status</div>
+        <div class="guide-body">{{if .WG.Up}}<span class="badge badge-success">KERNEL ATTACHED</span>{{else}}<span class="badge badge-danger">UNAVAILABLE</span>{{end}} · {{len .WG.Peers}} peers</div>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table id="tbl-wgpeers">
+        <thead>
+          <tr>
+            <th>Peer</th>
+            <th>Tunnel IP</th>
+            <th>Mode</th>
+            <th>Rx / Tx</th>
+            <th>Last Handshake</th>
+            <th style="width: 260px">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{$tok := .Token}}
+        {{if .WG.Peers}}
+          {{range .WG.Peers}}
+          <tr id="wgpeer-{{.ID}}">
+            <td style="font-weight:700">{{.Name}}</td>
+            <td class="mono">{{.IP}}</td>
+            <td>{{if .FullTunnel}}<span class="badge badge-info">FULL</span>{{else}}<span class="badge badge-secondary">SPLIT</span>{{end}}</td>
+            <td class="mono">{{humanBytes .RxBytes}} / {{humanBytes .TxBytes}}</td>
+            <td style="color:var(--dim)">{{if .Active}}{{.HandshakeAgo}}{{else}}—{{end}}</td>
+            <td>
+              <button class="btn ghost sm" onclick="showPeerConf({{.ID}}, '{{.Name}}')">QR / Config</button>
+              {{if .Active}}<button class="btn danger sm" hx-patch="/api/wg/peers/{{.ID}}?token={{$tok}}" hx-vals='{"active":false}' hx-confirm="Revoke {{.Name}}? The device loses VPN access immediately." hx-target="#wgpeer-{{.ID}}" hx-swap="outerHTML">Revoke</button>
+              {{else}}<button class="btn ghost sm" hx-patch="/api/wg/peers/{{.ID}}?token={{$tok}}" hx-vals='{"active":true}' hx-target="#wgpeer-{{.ID}}" hx-swap="outerHTML">Restore</button>{{end}}
+              <button class="btn danger sm" hx-delete="/api/wg/peers/{{.ID}}?token={{$tok}}" hx-confirm="Permanently delete {{.Name}}?" hx-target="#wgpeer-{{.ID}}" hx-swap="outerHTML">Delete</button>
+            </td>
+          </tr>
+          {{end}}
+        {{else}}
+          <tr><td colspan="6" style="text-align:center; color:var(--dim); padding:2.5rem">No VPN peers yet. Click "+ Add Peer", then scan the QR with the WireGuard app.</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{{else}}
+  <div class="section">
+    <div class="section-header"><div class="section-title">WireGuard VPN</div></div>
+    <div class="guide-card" style="max-width:640px">
+      <div class="guide-title">Module not running</div>
+      <div class="guide-body">
+        The WireGuard module hides device IPs and covers networks where encrypted DNS is blocked. Enable it on the server (Linux + root):
+        <div class="copy-box" style="margin-top:0.8rem">
+          <span>sudo supp wg enable</span>
+          <button class="btn ghost sm" onclick="copyText('sudo supp wg enable', this)">Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+{{end}}
+
 {{else if eq .View "setup"}}
 
   <div class="section">
@@ -651,6 +727,39 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
 {{end}}
 </main>
 
+<!-- Add WG Peer Modal -->
+<div class="modal-overlay" id="addPeerModal">
+  <div class="modal">
+    <div class="modal-title">Add VPN Peer</div>
+    <div class="modal-desc">Creates a WireGuard device. Full-tunnel hides the device IP; split-tunnel only routes DNS and configured networks.</div>
+    <div class="form-row" style="flex-direction:column; align-items:stretch">
+      <input type="text" id="peername" class="form-input" placeholder="Peer Name (e.g. laptop-travel)" autofocus>
+      <label style="font-size:0.85rem; color:var(--muted); display:flex; gap:0.5rem; align-items:center">
+        <input type="checkbox" id="peersplit" style="width:auto"> Split tunnel (instead of full-tunnel)
+      </label>
+      <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.5rem">
+        <button class="btn ghost" onclick="closeAddPeerModal()">Cancel</button>
+        <button class="btn" onclick="submitAddPeer()">Create Peer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Peer Config Modal -->
+<div class="modal-overlay" id="peerConfModal">
+  <div class="modal" style="width:min(92vw, 520px)">
+    <div class="modal-title" id="peerConfTitle">Peer Config</div>
+    <div class="modal-desc">Scan with the WireGuard app, or download the .conf file.</div>
+    <div style="display:grid; place-items:center; margin-bottom:1rem">
+      <img id="peerQR" alt="WireGuard QR" style="width:280px; height:280px; border-radius:12px; background:#fff; padding:8px">
+    </div>
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end">
+      <button class="btn ghost" onclick="closePeerConf()">Close</button>
+      <a id="peerConfDownload" class="btn" style="text-decoration:none; display:inline-block" download>Download .conf</a>
+    </div>
+  </div>
+</div>
+
 <!-- Add Device Modal -->
 <div class="modal-overlay" id="addDeviceModal">
   <div class="modal">
@@ -688,6 +797,36 @@ function submitAddDevice() {
     location.reload();
   })
   .catch(() => alert('Failed to create device.'));
+}
+function openAddPeerModal() {
+  document.getElementById('addPeerModal').classList.add('active');
+  document.getElementById('peername').focus();
+}
+function closeAddPeerModal() {
+  document.getElementById('addPeerModal').classList.remove('active');
+}
+function submitAddPeer() {
+  const n = document.getElementById('peername').value.trim();
+  if(!n) return alert('Please enter a peer name.');
+  fetch('/api/wg/peers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: n, split: document.getElementById('peersplit').checked })
+  })
+  .then(r => { if(!r.ok) return r.json().then(e => { throw new Error(e.error || 'failed'); }); return r.json(); })
+  .then(p => { closeAddPeerModal(); showPeerConf(p.id, p.name); location.reload(); })
+  .catch(e => alert('Failed to create peer: ' + e.message));
+}
+function showPeerConf(id, name) {
+  document.getElementById('peerConfTitle').innerText = 'Peer: ' + name;
+  document.getElementById('peerQR').src = '/api/wg/peers/' + id + '/qr.png';
+  const dl = document.getElementById('peerConfDownload');
+  dl.href = '/api/wg/peers/' + id + '/conf';
+  dl.download = name + '.conf';
+  document.getElementById('peerConfModal').classList.add('active');
+}
+function closePeerConf() {
+  document.getElementById('peerConfModal').classList.remove('active');
 }
 function copyText(txt, btn) {
   navigator.clipboard.writeText(txt).then(() => {

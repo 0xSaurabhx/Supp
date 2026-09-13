@@ -4,8 +4,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -18,6 +21,21 @@ type Config struct {
 	Block  Block  `toml:"block"`
 	Admin  Admin  `toml:"admin"`
 	Log    Log    `toml:"log"`
+	WG     WG     `toml:"wg"`
+}
+
+// WG holds the WireGuard VPN (phase 2) settings. All-zero values keep the
+// module disabled; Enable turns it into the standard defaults.
+type WG struct {
+	Enabled   bool     `toml:"enabled"`
+	Interface string   `toml:"interface"` // kernel link name, e.g. supp0
+	Port      int      `toml:"port"`      // UDP listen port
+	Subnet    string   `toml:"subnet"`    // tunnel CIDR, server takes .1
+	Endpoint  string   `toml:"endpoint"`  // host or host:port peers dial; default server.domain
+	// DefaultFullTunnel routes all device traffic through the VPS when true
+	// (IP hiding); when false peers default to split-tunnel (DNS + split).
+	DefaultFullTunnel bool     `toml:"default_full_tunnel"`
+	SplitNetworks     []string `toml:"split_networks"` // CIDRs routed in split mode
 }
 
 // Server holds network listener settings.
@@ -159,7 +177,45 @@ func Default() *Config {
 			Retention:    Duration(30 * 24 * time.Hour),
 			CountersOnly: false,
 		},
+		WG: WG{
+			Enabled:           false,
+			Interface:         "supp0",
+			Port:              51820,
+			Subnet:            "10.66.0.0/24",
+			Endpoint:          "",
+			DefaultFullTunnel: true,
+			SplitNetworks:     []string{},
+		},
 	}
+}
+
+// WGDefaults fills zero fields of the [wg] section with their defaults.
+func (w *WG) ApplyDefaults() {
+	if w.Interface == "" {
+		w.Interface = "supp0"
+	}
+	if w.Port == 0 {
+		w.Port = 51820
+	}
+	if w.Subnet == "" {
+		w.Subnet = "10.66.0.0/24"
+	}
+}
+
+// EffectiveEndpoint returns the endpoint peers should dial, always
+// host:port (the port is appended when the configured value omits it).
+func (w *WG) EffectiveEndpoint(domain string) string {
+	host := w.Endpoint
+	if host == "" {
+		host = domain
+	}
+	if host == "" {
+		host = "<server-ip>"
+	}
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		return fmt.Sprintf("%s:%d", host, w.Port)
+	}
+	return host
 }
 
 // Validate checks semantic correctness of the configuration.
@@ -184,8 +240,35 @@ func (c *Config) Validate() error {
 	if c.DNS.Listen.Plain == "" && c.DNS.Listen.DoT == "" && c.DNS.Listen.DoH == "" {
 		return errors.New("all dns listeners disabled; enable at least one")
 	}
+	c.WG.ApplyDefaults()
+	if err := c.WG.Validate(); err != nil {
+		return fmt.Errorf("wg: %w", err)
+	}
 	return nil
 }
+
+// Validate checks the [wg] section in isolation.
+func (w *WG) Validate() error {
+	if !w.Enabled {
+		return nil
+	}
+	if w.Interface == "" {
+		return errors.New("interface is required")
+	}
+	if w.Port < 1 || w.Port > 65535 {
+		return fmt.Errorf("port %d out of range", w.Port)
+	}
+	if _, err := netip.ParsePrefix(strings.TrimSpace(w.Subnet)); err != nil {
+		return fmt.Errorf("subnet %q is not a valid CIDR", w.Subnet)
+	}
+	if len(w.SplitNetworks) > 0 {
+		for _, s := range w.SplitNetworks {
+			if _, err := netip.ParsePrefix(strings.TrimSpace(s)); err != nil {
+				return fmt.Errorf("split_networks: %q is not a valid CIDR", s)
+			}
+		}
+	}
+	return nil}
 
 // Load reads a TOML config from path over the defaults.
 func Load(path string) (*Config, error) {

@@ -12,6 +12,11 @@ TimeoutStopSec=10s
 User=root
 
 # Hardening: needs NET_ADMIN-free but privileged ports, so no caps drop.
+# NOTE: if [wg] enabled = true in config.toml, the WireGuard module needs
+# extra privileges. Uncomment the two lines below (and drop ProtectKernelTunables
+# and ProtectControlGroups) so supp can create the wg interface and NAT rules:
+# AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+# CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/supp

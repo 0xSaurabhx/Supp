@@ -23,6 +23,33 @@ type Client struct {
 	Active    bool      `json:"active"`
 }
 
+// WgPeer is one WireGuard device (VPN peer).
+type WgPeer struct {
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	PublicKey   string    `json:"public_key"`
+	PrivateKey  string    `json:"-"` // kept so configs can be re-rendered; never serialized
+	IP          string    `json:"ip"`
+	CreatedAt   time.Time `json:"created_at"`
+	LastHandsha time.Time `json:"last_handshake"`
+	RxBytes     uint64    `json:"rx_bytes"`
+	TxBytes     uint64    `json:"tx_bytes"`
+	Active      bool      `json:"active"`
+	FullTunnel  bool      `json:"full_tunnel"`
+	ClientID    int64     `json:"client_id"` // optional link to a DNS device identity
+}
+
+// HasHandshake reports whether the peer ever completed a handshake.
+func (p WgPeer) HasHandshake() bool { return p.LastHandsha.Unix() > 0 }
+
+// HandshakeAgo renders the time since the last handshake ("5m").
+func (p WgPeer) HandshakeAgo() string {
+	if !p.HasHandshake() {
+		return "never"
+	}
+	return time.Since(p.LastHandsha).Round(time.Second).String()
+}
+
 // ErrNotFound is returned when a row does not exist.
 var ErrNotFound = errors.New("not found")
 
@@ -81,6 +108,20 @@ func (s *Store) schema() error {
 			qtype TEXT NOT NULL,
 			blocked INTEGER NOT NULL,
 			rcode INTEGER NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS wg_peers (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			public_key TEXT NOT NULL UNIQUE,
+			private_key TEXT NOT NULL,
+			ip TEXT NOT NULL UNIQUE,
+			created_at INTEGER NOT NULL,
+			last_handshake INTEGER NOT NULL DEFAULT 0,
+			rx_bytes INTEGER NOT NULL DEFAULT 0,
+			tx_bytes INTEGER NOT NULL DEFAULT 0,
+			active INTEGER NOT NULL DEFAULT 1,
+			full_tunnel INTEGER NOT NULL DEFAULT 1,
+			client_id INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_query_log_ts ON query_log (ts)`,
 	}
@@ -178,6 +219,119 @@ func (s *Store) DeleteClient(id int64) error {
 	}
 	_, err := s.db.Exec(`DELETE FROM day_counters WHERE client_id = ?`, id)
 	return err
+}
+
+// CreateWgPeer inserts a new VPN peer. The caller picks a free tunnel IP.
+func (s *Store) CreateWgPeer(name, pub, priv, ip string, fullTunnel bool, clientID int64) (*WgPeer, error) {
+	now := time.Now()
+	ft := 0
+	if fullTunnel {
+		ft = 1
+	}
+	res, err := s.db.Exec(
+		`INSERT INTO wg_peers (name, public_key, private_key, ip, created_at, active, full_tunnel, client_id)
+		 VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+		name, pub, priv, ip, now.Unix(), ft, clientID)
+	if err != nil {
+		return nil, err
+	}
+	id, _ := res.LastInsertId()
+	return &WgPeer{ID: id, Name: name, PublicKey: pub, PrivateKey: priv, IP: ip,
+		CreatedAt: now, LastHandsha: time.Unix(0, 0), Active: true, FullTunnel: fullTunnel, ClientID: clientID}, nil
+}
+
+// ListWgPeers returns all VPN peers, newest first.
+func (s *Store) ListWgPeers() ([]WgPeer, error) {
+	rows, err := s.db.Query(`SELECT id, name, public_key, private_key, ip, created_at, last_handshake, rx_bytes, tx_bytes, active, full_tunnel, client_id FROM wg_peers ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []WgPeer
+	for rows.Next() {
+		var p WgPeer
+		var created, hs int64
+		var active, ft int
+		if err := rows.Scan(&p.ID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.IP, &created, &hs, &p.RxBytes, &p.TxBytes, &active, &ft, &p.ClientID); err != nil {
+			return nil, err
+		}
+		p.CreatedAt = time.Unix(created, 0)
+		p.LastHandsha = time.Unix(hs, 0)
+		p.Active = active == 1
+		p.FullTunnel = ft == 1
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// WgPeerByID fetches one peer.
+func (s *Store) WgPeerByID(id int64) (*WgPeer, error) {
+	row := s.db.QueryRow(`SELECT id, name, public_key, private_key, ip, created_at, last_handshake, rx_bytes, tx_bytes, active, full_tunnel, client_id FROM wg_peers WHERE id = ?`, id)
+	return s.scanWgPeer(row)
+}
+
+// WgPeerByName fetches one peer by name.
+func (s *Store) WgPeerByName(name string) (*WgPeer, error) {
+	row := s.db.QueryRow(`SELECT id, name, public_key, private_key, ip, created_at, last_handshake, rx_bytes, tx_bytes, active, full_tunnel, client_id FROM wg_peers WHERE name = ?`, name)
+	return s.scanWgPeer(row)
+}
+
+func (s *Store) scanWgPeer(row *sql.Row) (*WgPeer, error) {
+	var p WgPeer
+	var created, hs int64
+	var active, ft int
+	if err := row.Scan(&p.ID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.IP, &created, &hs, &p.RxBytes, &p.TxBytes, &active, &ft, &p.ClientID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	p.CreatedAt = time.Unix(created, 0)
+	p.LastHandsha = time.Unix(hs, 0)
+	p.Active = active == 1
+	p.FullTunnel = ft == 1
+	return &p, nil
+}
+
+// DeleteWgPeer removes a peer row permanently.
+func (s *Store) DeleteWgPeer(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM wg_peers WHERE id = ?`, id)
+	return err
+}
+
+// SetWgPeerActive toggles a peer without deleting it (revoke/restore).
+func (s *Store) SetWgPeerActive(id int64, active bool) error {
+	ai := 0
+	if active {
+		ai = 1
+	}
+	_, err := s.db.Exec(`UPDATE wg_peers SET active = ? WHERE id = ?`, ai, id)
+	return err
+}
+
+// UpdateWgPeerStats stores latest rx/tx bytes and handshake time.
+func (s *Store) UpdateWgPeerStats(id int64, rx, tx uint64, handshake time.Time) error {
+	_, err := s.db.Exec(`UPDATE wg_peers SET rx_bytes = ?, tx_bytes = ?, last_handshake = ? WHERE id = ?`,
+		rx, tx, handshake.Unix(), id)
+	return err
+}
+
+// WgPeerIPs returns the tunnel IPs currently allocated (including inactive peers).
+func (s *Store) WgPeerIPs() (map[string]bool, error) {
+	rows, err := s.db.Query(`SELECT ip FROM wg_peers`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return nil, err
+		}
+		out[ip] = true
+	}
+	return out, rows.Err()
 }
 
 // TouchClient updates last_seen only when the presented token matches.

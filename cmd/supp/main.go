@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/0xsaurabhx/Supp/internal/filter"
 	"github.com/0xsaurabhx/Supp/internal/ops"
 	"github.com/0xsaurabhx/Supp/internal/store"
+	"github.com/0xsaurabhx/Supp/internal/wg"
 )
 
 var version = "dev"
@@ -43,6 +45,8 @@ func main() {
 		err = cmdServer(os.Args[2:], log)
 	case "client":
 		err = cmdClient(os.Args[2:], log)
+	case "wg":
+		err = cmdWG(os.Args[2:], log)
 	case "status":
 		err = cmdStatus(os.Args[2:], log)
 	case "doctor":
@@ -69,6 +73,7 @@ Usage:
   supp init [--config PATH] [--domain DNSNAME] [--token TOK]
   supp server [--config PATH]
   supp client add <name> | list | revoke <name> [--config PATH]
+  supp wg enable | disable | add <name> [--split] | list | qr <name> | remove <name> | show [--config PATH]
   supp status [--config PATH]
   supp doctor [--config PATH]
   supp version
@@ -221,6 +226,18 @@ func runServer(cfg *config.Config, log *slog.Logger) error {
 		return err
 	}
 
+	// WireGuard VPN (phase 2): bring-up failure must not kill DNS.
+	var wgSvc *wg.Service
+	if cfg.WG.Enabled {
+		wgSvc = wg.NewService(cfg.WG, st, cfg.Server.Domain, cfg.Server.DataDir, log)
+		if err := wgSvc.Enable(); err != nil {
+			log.Warn("wireguard disabled", "err", err)
+			wgSvc = nil
+		} else {
+			go wgSvc.Loop(ctx.Done())
+		}
+	}
+
 	// Admin dashboard (failure here must not kill DNS).
 	if cfg.Admin.Enabled {
 		go func() {
@@ -228,6 +245,7 @@ func runServer(cfg *config.Config, log *slog.Logger) error {
 				Store:   st,
 				Filter:  eng,
 				Live:    srv.Live,
+				WG:      wgSvc,
 				Version: version,
 				Token:   cfg.Admin.Token,
 				Log:     log,
@@ -267,6 +285,175 @@ func upstreamWeights(cfg *config.Config) []int {
 		out = append(out, u.Weight)
 	}
 	return out
+}
+
+// openWGStore opens the store for wg subcommands (read/write of peers only).
+func openWGStore(cfg *config.Config) (*store.Store, error) {
+	if err := os.MkdirAll(cfg.Server.DataDir, 0o750); err != nil {
+		return nil, err
+	}
+	return store.Open(filepath.Join(cfg.Server.DataDir, "supp.db"), false, cfg.Log.Retention.D())
+}
+
+// cmdWG implements the `supp wg` subcommands (phase 2 VPN module).
+func cmdWG(args []string, log *slog.Logger) error {
+	if len(args) < 1 {
+		return errors.New("usage: supp wg enable | disable | add <name> [--split] | list | qr <name> | remove <name> | show")
+	}
+	cfg, err := config.Load(configPath(args))
+	if err != nil {
+		return err
+	}
+	if !cfg.WG.Enabled {
+		cfg.WG.Enabled = true // subcommands imply intent; kernel ops still require root
+	}
+	cfg.WG.ApplyDefaults()
+	st, err := openWGStore(cfg)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	svc := wg.NewService(cfg.WG, st, cfg.Server.Domain, cfg.Server.DataDir, log)
+	sub, rest := args[0], args[1:]
+	switch sub {
+	case "enable":
+		if err := svc.Enable(); err != nil {
+			return fmt.Errorf("enable VPN: %w", err)
+		}
+		sip, _ := wg.ServerIP(cfg.WG.Subnet)
+		fmt.Println("VPN enabled:")
+		fmt.Printf("  interface: %s\n", cfg.WG.Interface)
+		fmt.Printf("  endpoint:  %s\n", svc.Endpoint())
+		fmt.Printf("  tunnel:    %s (server %s)\n", cfg.WG.Subnet, sip)
+		fmt.Printf("  mode:      %s\n", tunnelMode(cfg.WG.DefaultFullTunnel))
+		fmt.Println("next: add a device with 'supp wg add <name>' and scan the QR in the WireGuard app")
+		return nil
+	case "disable":
+		if err := svc.Disable(); err != nil {
+			return fmt.Errorf("disable VPN: %w", err)
+		}
+		fmt.Println("VPN disabled (interface and NAT rules removed; peers kept)")
+		return nil
+	case "add":
+		if len(rest) < 1 {
+			return errors.New("usage: supp wg add <name> [--split] [--client <device>]")
+		}
+		fs := flag.NewFlagSet("wg add", flag.ContinueOnError)
+		split := fs.Bool("split", false, "split-tunnel (route DNS + split_networks only)")
+		client := fs.String("client", "", "link to a registered DNS device name")
+		if err := fs.Parse(stripConfigArg(rest[1:])); err != nil {
+			return err
+		}
+		full := cfg.WG.DefaultFullTunnel
+		if *split {
+			full = false
+		}
+		var clientID int64
+		if *client != "" {
+			c, err := st.ClientByName(*client)
+			if err != nil {
+				return fmt.Errorf("device %q: %w", *client, err)
+			}
+			clientID = c.ID
+		}
+		p, err := svc.AddPeer(rest[0], full, clientID)
+		if err != nil {
+			return err
+		}
+		conf, err := svc.PeerConf(p)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("peer created:\n  name: %s\n  ip:   %s\n  mode: %s\n\n%s", p.Name, p.IP, tunnelMode(full), conf)
+		fmt.Println("scan with the WireGuard app (supp wg qr " + p.Name + ") or save the text above as <name>.conf")
+		return nil
+	case "list":
+		peers, err := st.ListWgPeers()
+		if err != nil {
+			return err
+		}
+		if len(peers) == 0 {
+			fmt.Println("no VPN peers")
+			return nil
+		}
+		for _, p := range peers {
+			status := "active"
+			if !p.Active {
+				status = "REVOKED"
+			}
+			hs := "never"
+			if !p.LastHandsha.IsZero() && p.LastHandsha.Unix() > 0 {
+				hs = time.Since(p.LastHandsha).Round(time.Second).String() + " ago"
+			}
+			fmt.Printf("%-18s %-12s %-8s rx=%-10s tx=%-10s hs=%-12s %s\n",
+				p.Name, p.IP, tunnelMode(p.FullTunnel), humanBytes(p.RxBytes), humanBytes(p.TxBytes), hs, status)
+		}
+		return nil
+	case "qr":
+		if len(rest) < 1 {
+			return errors.New("usage: supp wg qr <name>")
+		}
+		p, err := st.WgPeerByName(rest[0])
+		if err != nil {
+			return fmt.Errorf("find peer: %w", err)
+		}
+		conf, err := svc.PeerConf(p)
+		if err != nil {
+			return err
+		}
+		art, err := wg.QRTerminal(conf)
+		if err != nil {
+			return err
+		}
+		fmt.Print(art)
+		fmt.Println("(WireGuard app → + → Create from QR code)")
+		return nil
+	case "remove", "delete":
+		if len(rest) < 1 {
+			return errors.New("usage: supp wg remove <name>")
+		}
+		p, err := st.WgPeerByName(rest[0])
+		if err != nil {
+			return fmt.Errorf("find peer: %w", err)
+		}
+		if err := svc.RemovePeer(p.ID); err != nil {
+			return err
+		}
+		fmt.Printf("removed %s\n", p.Name)
+		return nil
+	case "show":
+		stat := svc.Status()
+		fmt.Printf("interface: %s  endpoint: %s  tunnel: %s (server %s)\n", stat.Interface, stat.Endpoint, stat.Subnet, stat.ServerIP)
+		fmt.Printf("kernel:    %s\n", map[bool]string{true: "attached", false: "unavailable (conf/QR generation still works)"}[stat.Up])
+		fmt.Printf("peers:     %d\n", len(stat.Peers))
+		return nil
+	default:
+		return fmt.Errorf("unknown wg subcommand %q", sub)
+	}
+}
+
+func tunnelMode(full bool) string {
+	if full {
+		return "full-tunnel"
+	}
+	return "split"
+}
+
+func humanBytes(n uint64) string {
+	const k = 1024
+	switch {
+	case n >= k*k*k*k:
+		return fmt.Sprintf("%.1fT", float64(n)/(k*k*k*k))
+	case n >= k*k*k:
+		return fmt.Sprintf("%.1fG", float64(n)/(k*k*k))
+	case n >= k*k:
+		return fmt.Sprintf("%.1fM", float64(n)/(k*k))
+	case n >= k:
+		return fmt.Sprintf("%.1fK", float64(n)/k)
+	default:
+		return fmt.Sprintf("%dB", n)
+	}
 }
 
 func cmdClient(args []string, log *slog.Logger) error {
@@ -407,6 +594,17 @@ func cmdDoctor(args []string, log *slog.Logger) error {
 		_, err := net.LookupHost(host)
 		check("upstream reachable ("+host+")", err)
 	}
+	if cfg.WG.Enabled {
+		check("wg interface name set", nilIf(cfg.WG.Interface != ""))
+		check("wg port bindable (udp "+fmt.Sprint(cfg.WG.Port)+")", udpFree(cfg.WG.Port))
+		if ep := cfg.WG.EffectiveEndpoint(cfg.Server.Domain); !strings.HasPrefix(ep, "<") {
+			host, _ := splitHostPort(ep)
+			_, err := net.LookupHost(host)
+			check("wg endpoint resolves ("+host+")", err)
+		} else {
+			fmt.Println("⚠ wg: no endpoint or server.domain set — peers will need the raw server IP")
+		}
+	}
 	if !ok {
 		return errors.New("doctor found problems")
 	}
@@ -452,6 +650,31 @@ func portFree(addr string) error {
 		return nil
 	}
 	return fmt.Errorf("%s busy (tcp: %v)", addr, err)
+}
+
+func nilIf(cond bool) error {
+	if cond {
+		return nil
+	}
+	return errors.New("not set")
+}
+
+func udpFree(port int) error {
+	p, err := net.ListenPacket("udp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return fmt.Errorf("udp %d busy: %w", port, err)
+	}
+	p.Close()
+	return nil
+}
+
+func splitHostPort(ep string) (string, int) {
+	host, port, err := net.SplitHostPort(ep)
+	if err != nil {
+		return ep, 0
+	}
+	p, _ := strconv.Atoi(port)
+	return host, p
 }
 
 func hostOf(url string) string {

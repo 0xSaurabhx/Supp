@@ -14,6 +14,7 @@ admin  ──► token-gated dashboard ──► stats · devices · live querie
 - **Blocks before it resolves** — blocked names never reach an upstream; CNAME-cloaked trackers are re-checked across the answer chain.
 - **Private by default** — query logging off, only rolling counters kept. No telemetry, no external calls beyond your chosen upstreams and blocklists.
 - **Per-device identities** — each device gets a secret DoH URL (`https://your-domain/dns/<token>`) for per-device stats and instant revocation.
+- **Built-in WireGuard VPN** — hide device IPs and cover networks where encrypted DNS is blocked (hotel/office firewalls, carriers forcing their own resolvers). One binary manages the interface, peers and NAT; phone setup is a QR scan.
 
 ## Install (VPS)
 
@@ -61,10 +62,41 @@ Per-device URL (stats + revocation): `supp client add pixel` → use `https://dn
 supp init      [--config PATH] [--domain NAME] [--token TOK]
 supp server    [--config PATH]
 supp client    add <name> | list | revoke <name>   [--config PATH]
+supp wg        enable | disable | add <name> [--split] | list | qr <name> | remove <name> | show
 supp status    [--config PATH]
 supp doctor    [--config PATH]
 supp version
 ```
+
+## WireGuard VPN (phase 2)
+
+Encrypted DNS can be blocked or ignored by hostile networks — and DNS alone never hides your IP. The optional WireGuard module solves both: devices tunnel through your VPS, and their DNS queries land in Supp, so ad/tracker blocking keeps working inside the tunnel.
+
+Enable on the server (Linux, root — kernel WireGuard + iproute2 required):
+
+```sh
+sudo supp wg enable        # creates supp0, sets ip_forward + NAT, listens on :51820/udp
+supp wg add laptop         # prints a ready-to-use .conf
+supp wg qr laptop          # terminal QR — scan with the WireGuard app
+supp wg list               # name, tunnel IP, rx/tx, last handshake
+sudo supp wg disable       # removes interface + NAT rules (peers kept)
+```
+
+Or manage everything from the dashboard's **VPN** tab: add peers, show the QR, revoke or delete devices. Peers are full-tunnel by default (`0.0.0.0/0, ::/0` — IP hidden); add `--split` to route only DNS plus configured `split_networks`. Revoking a peer pulls it from the kernel instantly while keeping its row and stats.
+
+```toml
+[wg]
+enabled = true
+interface = "supp0"
+port = 51820
+subnet = "10.66.0.0/24"    # server takes .1
+endpoint = ""              # defaults to server.domain:port
+default_full_tunnel = true
+split_networks = []        # extra CIDRs routed in split mode
+```
+
+> [!NOTE]
+> If you run supp under systemd, uncomment the `AmbientCapabilities` lines in `scripts/supp.service` when `wg.enabled = true` — the module needs `CAP_NET_ADMIN` to create the interface and NAT rules.
 
 ## Blocklists
 
@@ -106,10 +138,10 @@ make vet      # go vet
 make bench    # filter + cache benchmarks
 ```
 
-Layout: `cmd/supp` (CLI) · `internal/dns` (listeners, cache, pool) · `internal/filter` (lists, matcher, engine) · `internal/admin` (dashboard) · `internal/store` (SQLite counters) · `internal/ops` (init, TLS/autocert).
+Layout: `cmd/supp` (CLI) · `internal/dns` (listeners, cache, pool) · `internal/filter` (lists, matcher, engine) · `internal/admin` (dashboard) · `internal/store` (SQLite counters) · `internal/wg` (WireGuard VPN) · `internal/ops` (init, TLS/autocert).
 
 ## Honest limits
 
 - Same-domain ads (YouTube etc.) can't be fully blocked at DNS level.
 - Apps hardcoding their own DoH bypass local settings unless your router forces port 53 to Supp.
-- Phase 2 (planned): WireGuard module for IP hiding and devices where encrypted DNS is blocked.
+- The VPN module manages **kernel** WireGuard on Linux (any VPS); config/QR generation also works on other platforms, but the interface itself is Linux-only. Userspace fallback is a possible phase 3.

@@ -2,22 +2,44 @@ package admin
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"net/http"
+
+	"github.com/0xsaurabhx/Supp/internal/wg"
 )
 
 //go:embed templates/*.html static/*
 var templateFS embed.FS
 
 var tpl = template.Must(template.New("layout.html").Funcs(template.FuncMap{
-	"add1": func(i int) int { return i + 1 },
+	"add1":       func(i int) int { return i + 1 },
+	"humanBytes": humanBytes,
 }).ParseFS(templateFS, "templates/*.html"))
+
+// humanBytes renders a byte count for the dashboard (12.3M).
+func humanBytes(n uint64) string {
+	const k = 1024
+	switch {
+	case n >= k*k*k*k:
+		return fmt.Sprintf("%.1fT", float64(n)/(k*k*k*k))
+	case n >= k*k*k:
+		return fmt.Sprintf("%.1fG", float64(n)/(k*k*k))
+	case n >= k*k:
+		return fmt.Sprintf("%.1fM", float64(n)/(k*k))
+	case n >= k:
+		return fmt.Sprintf("%.1fK", float64(n)/k)
+	default:
+		return fmt.Sprintf("%dB", n)
+	}
+}
 
 // pageData is the model passed to every page.
 type pageData struct {
 	View  string
 	Stats *statsView
 	Token string
+	WG    *wg.Status // nil when the VPN module is disabled
 }
 
 // render writes a page; layout.html defines the shell and imports the view.

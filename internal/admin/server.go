@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/0xsaurabhx/Supp/internal/dns"
 	"github.com/0xsaurabhx/Supp/internal/filter"
 	"github.com/0xsaurabhx/Supp/internal/store"
+	"github.com/0xsaurabhx/Supp/internal/wg"
 )
 
 // Deps wires the admin server into running components.
@@ -24,6 +26,7 @@ type Deps struct {
 	Store   *store.Store
 	Filter  *filter.Engine
 	Live    *dns.Metrics
+	WG      *wg.Service // nil when the VPN module is disabled
 	Version string
 	Token   string
 	Log     *slog.Logger
@@ -47,6 +50,13 @@ func New(d Deps) *Server {
 	m.HandleFunc("GET /clients", s.pageClients)
 	m.HandleFunc("GET /blocklists", s.pageBlocklists)
 	m.HandleFunc("GET /setup", s.pageSetup)
+	m.HandleFunc("GET /wg", s.pageWG)
+	m.HandleFunc("GET /api/wg/status", s.apiWGStatus)
+	m.HandleFunc("POST /api/wg/peers", s.apiWGPeerCreate)
+	m.HandleFunc("DELETE /api/wg/peers/{id}", s.apiWGPeerDelete)
+	m.HandleFunc("PATCH /api/wg/peers/{id}", s.apiWGPeerToggle)
+	m.HandleFunc("GET /api/wg/peers/{id}/conf", s.apiWGPeerConf)
+	m.HandleFunc("GET /api/wg/peers/{id}/qr.png", s.apiWGPeerQR)
 	m.HandleFunc("GET /api/stats", s.apiStats)
 	m.HandleFunc("GET /api/clients", s.apiClients)
 	m.HandleFunc("POST /api/clients", s.apiClientCreate)
@@ -259,6 +269,152 @@ func (s *Server) pageBlocklists(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pageSetup(w http.ResponseWriter, r *http.Request) {
 	v := s.stats(r)
 	render(w, pageData{View: "setup", Stats: &v, Token: s.deps.Token})
+}
+
+func (s *Server) pageWG(w http.ResponseWriter, r *http.Request) {
+	v := s.stats(r)
+	if s.deps.WG != nil {
+		st := s.deps.WG.Status()
+		render(w, pageData{View: "wg", Stats: &v, Token: s.deps.Token, WG: &st})
+		return
+	}
+	render(w, pageData{View: "wg", Stats: &v, Token: s.deps.Token})
+}
+
+// apiWGStatus returns the VPN status JSON (or 409 when WG is disabled).
+func (s *Server) apiWGStatus(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled (run 'supp wg enable')")
+		return
+	}
+	writeJSON(w, s.deps.WG.Status())
+}
+
+func (s *Server) apiWGPeerCreate(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled")
+		return
+	}
+	var in struct {
+		Name       string `json:"name"`
+		Split      bool   `json:"split"`
+		DeviceName string `json:"device"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&in); err != nil || in.Name == "" {
+		httpError(w, 400, "name required")
+		return
+	}
+	var clientID int64
+	if in.DeviceName != "" {
+		if c, err := s.deps.Store.ClientByName(in.DeviceName); err == nil {
+			clientID = c.ID
+		}
+	}
+	full := !in.Split
+	p, err := s.deps.WG.AddPeer(in.Name, full, clientID)
+	if err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, p)
+}
+
+func (s *Server) apiWGPeerDelete(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpError(w, 400, "bad id")
+		return
+	}
+	if err := s.deps.WG.RemovePeer(id); err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// apiWGPeerToggle revokes/restores a peer. Body {"active": bool}.
+func (s *Server) apiWGPeerToggle(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpError(w, 400, "bad id")
+		return
+	}
+	var in struct {
+		Active *bool `json:"active"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&in); err != nil || in.Active == nil {
+		httpError(w, 400, "active (bool) required")
+		return
+	}
+	if err := s.deps.WG.SetPeerActive(id, *in.Active); err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// apiWGPeerConf serves the peer's wg-quick config as a download.
+func (s *Server) apiWGPeerConf(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpError(w, 400, "bad id")
+		return
+	}
+	p, err := s.deps.Store.WgPeerByID(id)
+	if err != nil {
+		httpError(w, 404, "peer not found")
+		return
+	}
+	conf, err := s.deps.WG.PeerConf(p)
+	if err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q.conf", p.Name))
+	_, _ = w.Write([]byte(conf))
+}
+
+// apiWGPeerQR serves the peer config as a scannable PNG.
+func (s *Server) apiWGPeerQR(w http.ResponseWriter, r *http.Request) {
+	if s.deps.WG == nil {
+		httpError(w, 409, "wireguard module not enabled")
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		httpError(w, 400, "bad id")
+		return
+	}
+	p, err := s.deps.Store.WgPeerByID(id)
+	if err != nil {
+		httpError(w, 404, "peer not found")
+		return
+	}
+	conf, err := s.deps.WG.PeerConf(p)
+	if err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	png, err := wg.QRPNG(conf, 512)
+	if err != nil {
+		httpError(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	_, _ = w.Write(png)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
