@@ -155,9 +155,9 @@ func Default() *Config {
 			Token:   "",
 		},
 		Log: Log{
-			Queries:      false,
+			Queries:      true,
 			Retention:    Duration(30 * 24 * time.Hour),
-			CountersOnly: true,
+			CountersOnly: false,
 		},
 	}
 }

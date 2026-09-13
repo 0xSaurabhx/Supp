@@ -144,7 +144,7 @@ func runServer(cfg *config.Config, log *slog.Logger) error {
 	}
 
 	// Storage.
-	st, err := store.Open(filepath.Join(cfg.Server.DataDir, "supp.db"), cfg.Log.Queries && !cfg.Log.CountersOnly, cfg.Log.Retention.D())
+	st, err := store.Open(filepath.Join(cfg.Server.DataDir, "supp.db"), cfg.Log.Queries, cfg.Log.Retention.D())
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}

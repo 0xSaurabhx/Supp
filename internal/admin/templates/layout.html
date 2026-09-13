@@ -516,118 +516,6 @@ tr:hover td { background: rgba(255, 255, 255, 0.02); }
     {{template "live" .Stats}}
   </div>
 
-  <!-- Top Blocked Domains -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-title">
-        <span>Top Blocked Domains</span>
-        <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(24h rolling)</span>
-      </div>
-      <input type="text" class="search-input" placeholder="Filter domains..." onkeyup="filterTable(this, 'tbl-topblocked')">
-    </div>
-    <div class="table-wrapper">
-      <table id="tbl-topblocked">
-        <thead>
-          <tr>
-            <th style="width: 50px">#</th>
-            <th>Domain</th>
-            <th>Total Queries</th>
-            <th>Blocked Hits</th>
-          </tr>
-        </thead>
-        <tbody>
-        {{if .Stats.TopBlocked}}
-          {{range $idx, $row := .Stats.TopBlocked}}
-          <tr>
-            <td style="color:var(--dim); font-size:0.8rem">{{add1 $idx}}</td>
-            <td class="mono">{{$row.Domain}}</td>
-            <td>{{$row.Queries}}</td>
-            <td><span class="badge badge-danger">{{$row.Blocked}}</span></td>
-          </tr>
-          {{end}}
-        {{else}}
-          <tr><td colspan="4" style="text-align:center; color:var(--dim); padding: 2rem">No domain data yet — queries are logged securely when <code>log.queries = true</code>.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.82rem; color:var(--muted); flex-wrap:wrap; gap:0.5rem">
-      <div style="display:flex; align-items:center; gap:0.5rem">
-        <span>Rows per page:</span>
-        <select id="pageSize-topblocked" class="form-input" style="min-width:auto; padding:0.25rem 0.5rem; font-size:0.8rem" onchange="renderPagination('tbl-topblocked')">
-          <option value="15" selected>15</option>
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-      <div id="pageInfo-topblocked">Showing 0 of 0</div>
-      <div style="display:flex; gap:0.4rem">
-        <button id="btnPrev-topblocked" class="btn ghost sm" onclick="changePage('topblocked', -1)">&larr; Prev</button>
-        <button id="btnNext-topblocked" class="btn ghost sm" onclick="changePage('topblocked', 1)">Next &rarr;</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Live Recent Queries Ring -->
-  <div class="section">
-    <div class="section-header">
-      <div class="section-title">
-        <span>Recent Live Queries</span>
-        <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(In-Memory Ring Buffer)</span>
-      </div>
-      <input type="text" class="search-input" placeholder="Search queries..." onkeyup="filterTable(this, 'tbl-recent')">
-    </div>
-    <div class="table-wrapper">
-      <table id="tbl-recent">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Device</th>
-            <th>Query Name</th>
-            <th>Type</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-        {{if .Stats.Recent}}
-          {{range .Stats.Recent}}
-          <tr>
-            <td style="color:var(--dim)" class="mono">{{.TS.Format "15:04:05"}}</td>
-            <td><span class="badge badge-secondary">{{if .Client}}{{.Client}}{{else}}Default Client{{end}}</span></td>
-            <td class="mono">{{.QName}}</td>
-            <td class="mono" style="color:var(--dim)">{{.QType}}</td>
-            <td>
-              {{if .Blocked}}<span class="badge badge-danger">BLOCKED</span>
-              {{else if .Cached}}<span class="badge badge-success">CACHED</span>
-              {{else}}<span class="badge badge-info">RESOLVED</span>{{end}}
-            </td>
-          </tr>
-          {{end}}
-        {{else}}
-          <tr><td colspan="5" style="text-align:center; color:var(--dim); padding: 2rem">No recent queries in memory buffer.</td></tr>
-        {{end}}
-        </tbody>
-      </table>
-    </div>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.82rem; color:var(--muted); flex-wrap:wrap; gap:0.5rem">
-      <div style="display:flex; align-items:center; gap:0.5rem">
-        <span>Rows per page:</span>
-        <select id="pageSize-recent" class="form-input" style="min-width:auto; padding:0.25rem 0.5rem; font-size:0.8rem" onchange="renderPagination('tbl-recent')">
-          <option value="15" selected>15</option>
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-      <div id="pageInfo-recent">Showing 0 of 0</div>
-      <div style="display:flex; gap:0.4rem">
-        <button id="btnPrev-recent" class="btn ghost sm" onclick="changePage('recent', -1)">&larr; Prev</button>
-        <button id="btnNext-recent" class="btn ghost sm" onclick="changePage('recent', 1)">Next &rarr;</button>
-      </div>
-    </div>
-  </div>
-
 {{else if eq .View "clients"}}
 
   <div class="section">
@@ -884,6 +772,10 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPagination('tbl-topblocked');
   renderPagination('tbl-recent');
 });
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  renderPagination('tbl-topblocked');
+  renderPagination('tbl-recent');
+});
 </script>
 
 </body>
@@ -944,6 +836,118 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="stat-value primary">{{printf "%.0f" .MemAllocMB}}<span style="font-size:1rem; font-weight:500"> MB</span></div>
     <div class="stat-subtext">{{.NumGoroutine}} active goroutines</div>
+  </div>
+</div>
+
+<!-- Top Blocked Domains -->
+<div class="section" style="margin-top: 2rem;">
+  <div class="section-header">
+    <div class="section-title">
+      <span>Top Blocked Domains</span>
+      <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(24h rolling)</span>
+    </div>
+    <input type="text" class="search-input" placeholder="Filter domains..." onkeyup="filterTable(this, 'tbl-topblocked')">
+  </div>
+  <div class="table-wrapper">
+    <table id="tbl-topblocked">
+      <thead>
+        <tr>
+          <th style="width: 50px">#</th>
+          <th>Domain</th>
+          <th>Total Queries</th>
+          <th>Blocked Hits</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{if .TopBlocked}}
+        {{range $idx, $row := .TopBlocked}}
+        <tr>
+          <td style="color:var(--dim); font-size:0.8rem">{{add1 $idx}}</td>
+          <td class="mono">{{$row.Domain}}</td>
+          <td>{{$row.Queries}}</td>
+          <td><span class="badge badge-danger">{{$row.Blocked}}</span></td>
+        </tr>
+        {{end}}
+      {{else}}
+        <tr><td colspan="4" style="text-align:center; color:var(--dim); padding: 2rem">No domain data yet — queries are logged securely when <code>log.queries = true</code>.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.82rem; color:var(--muted); flex-wrap:wrap; gap:0.5rem">
+    <div style="display:flex; align-items:center; gap:0.5rem">
+      <span>Rows per page:</span>
+      <select id="pageSize-topblocked" class="form-input" style="min-width:auto; padding:0.25rem 0.5rem; font-size:0.8rem" onchange="renderPagination('tbl-topblocked')">
+        <option value="15" selected>15</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div id="pageInfo-topblocked">Showing 0 of 0</div>
+    <div style="display:flex; gap:0.4rem">
+      <button id="btnPrev-topblocked" class="btn ghost sm" onclick="changePage('topblocked', -1)">&larr; Prev</button>
+      <button id="btnNext-topblocked" class="btn ghost sm" onclick="changePage('topblocked', 1)">Next &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<!-- Live Recent Queries Ring -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-title">
+      <span>Recent Live Queries</span>
+      <span style="font-size:0.78rem; font-weight:500; color:var(--dim)">(Persistent SQLite Log)</span>
+    </div>
+    <input type="text" class="search-input" placeholder="Search queries..." onkeyup="filterTable(this, 'tbl-recent')">
+  </div>
+  <div class="table-wrapper">
+    <table id="tbl-recent">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Device</th>
+          <th>Query Name</th>
+          <th>Type</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+      {{if .Recent}}
+        {{range .Recent}}
+        <tr>
+          <td style="color:var(--dim)" class="mono">{{.TS.Format "15:04:05"}}</td>
+          <td><span class="badge badge-secondary">{{if .Client}}{{.Client}}{{else}}Default Client{{end}}</span></td>
+          <td class="mono">{{.QName}}</td>
+          <td class="mono" style="color:var(--dim)">{{.QType}}</td>
+          <td>
+            {{if .Blocked}}<span class="badge badge-danger">BLOCKED</span>
+            {{else if .Cached}}<span class="badge badge-success">CACHED</span>
+            {{else}}<span class="badge badge-info">RESOLVED</span>{{end}}
+          </td>
+        </tr>
+        {{end}}
+      {{else}}
+        <tr><td colspan="5" style="text-align:center; color:var(--dim); padding: 2rem">No recent queries recorded yet.</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.75rem; font-size:0.82rem; color:var(--muted); flex-wrap:wrap; gap:0.5rem">
+    <div style="display:flex; align-items:center; gap:0.5rem">
+      <span>Rows per page:</span>
+      <select id="pageSize-recent" class="form-input" style="min-width:auto; padding:0.25rem 0.5rem; font-size:0.8rem" onchange="renderPagination('tbl-recent')">
+        <option value="15" selected>15</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+    <div id="pageInfo-recent">Showing 0 of 0</div>
+    <div style="display:flex; gap:0.4rem">
+      <button id="btnPrev-recent" class="btn ghost sm" onclick="changePage('recent', -1)">&larr; Prev</button>
+      <button id="btnNext-recent" class="btn ghost sm" onclick="changePage('recent', 1)">Next &rarr;</button>
+    </div>
   </div>
 </div>
 {{end}}

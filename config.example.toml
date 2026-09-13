@@ -73,6 +73,6 @@ token = ""
 # per-day counters are kept. Enabling queries=true stores domains in
 # top_domains/query_log for 24h top-lists and live search.
 [log]
-queries = false
+queries = true
 retention = "720h"
-counters_only = true
+counters_only = false

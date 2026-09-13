@@ -257,9 +257,9 @@ type DayRow struct {
 
 // PerClient returns counters per client since the given time.
 func (s *Store) PerClient(since time.Time) ([]ClientRow, error) {
-	rows, err := s.db.Query(`SELECT c.id, c.name, COALESCE(SUM(d.queries),0), COALESCE(SUM(d.blocked),0)
+	rows, err := s.db.Query(`SELECT c.id, c.name, c.token, COALESCE(SUM(d.queries),0), COALESCE(SUM(d.blocked),0)
 		FROM clients c LEFT JOIN day_counters d ON d.client_id = c.id AND d.day >= ?
-		GROUP BY c.id ORDER BY 3 DESC`, since.UTC().Format("2006-01-02"))
+		GROUP BY c.id ORDER BY 4 DESC`, since.UTC().Format("2006-01-02"))
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (s *Store) PerClient(since time.Time) ([]ClientRow, error) {
 	var out []ClientRow
 	for rows.Next() {
 		var r ClientRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.Queries, &r.Blocked); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Token, &r.Queries, &r.Blocked); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -279,6 +279,7 @@ func (s *Store) PerClient(since time.Time) ([]ClientRow, error) {
 type ClientRow struct {
 	ID      int64  `json:"id"`
 	Name    string `json:"name"`
+	Token   string `json:"token"`
 	Queries uint64 `json:"queries"`
 	Blocked uint64 `json:"blocked"`
 }
@@ -315,7 +316,7 @@ type DomainRow struct {
 
 // RecentLog returns the newest query-log rows.
 func (s *Store) RecentLog(limit int) ([]LogRow, error) {
-	rows, err := s.db.Query(`SELECT ts, client_id, qname, qtype, blocked, rcode FROM query_log ORDER BY ts DESC LIMIT ?`, limit)
+	rows, err := s.db.Query(`SELECT q.ts, q.client_id, COALESCE(c.name, ''), q.qname, q.qtype, q.blocked, q.rcode FROM query_log q LEFT JOIN clients c ON c.id = q.client_id ORDER BY q.ts DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +324,7 @@ func (s *Store) RecentLog(limit int) ([]LogRow, error) {
 	var out []LogRow
 	for rows.Next() {
 		var r LogRow
-		if err := rows.Scan(&r.TS, &r.ClientID, &r.QName, &r.QType, &r.Blocked, &r.RCode); err != nil {
+		if err := rows.Scan(&r.TS, &r.ClientID, &r.ClientName, &r.QName, &r.QType, &r.Blocked, &r.RCode); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -333,12 +334,13 @@ func (s *Store) RecentLog(limit int) ([]LogRow, error) {
 
 // LogRow is one entry of the opt-in query log.
 type LogRow struct {
-	TS       int64  `json:"ts"`
-	ClientID int64  `json:"client_id"`
-	QName    string `json:"qname"`
-	QType    string `json:"qtype"`
-	Blocked  int    `json:"blocked"`
-	RCode    int    `json:"rcode"`
+	TS         int64  `json:"ts"`
+	ClientID   int64  `json:"client_id"`
+	ClientName string `json:"client_name"`
+	QName      string `json:"qname"`
+	QType      string `json:"qtype"`
+	Blocked    int    `json:"blocked"`
+	RCode      int    `json:"rcode"`
 }
 
 // Cleanup deletes expired rows. Call periodically.

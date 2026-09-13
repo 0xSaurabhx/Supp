@@ -153,7 +153,7 @@ func (s *Server) stats(r *http.Request) statsView {
 		v.Sources = fst.Sources
 	}
 	if s.deps.Store != nil {
-		v.TopBlocked, _ = s.deps.Store.TopDomains(since, 15, true)
+		v.TopBlocked, _ = s.deps.Store.TopDomains(since, 50, true)
 		v.Clients, _ = s.deps.Store.PerClient(since)
 		qStore, bStore := s.deps.Store.Totals(time.Time{})
 		if qStore > v.QueriesTotal {
@@ -162,6 +162,26 @@ func (s *Server) stats(r *http.Request) statsView {
 		if bStore > v.BlockedTotal {
 			v.BlockedTotal = bStore
 		}
+		if dbLogs, err := s.deps.Store.RecentLog(100); err == nil && len(dbLogs) > 0 {
+			v.Recent = make([]dns.RecentQuery, 0, len(dbLogs))
+			for _, r := range dbLogs {
+				clientName := r.ClientName
+				if clientName == "" {
+					clientName = "Default Client"
+				}
+				v.Recent = append(v.Recent, dns.RecentQuery{
+					TS:      time.Unix(r.TS, 0),
+					Client:  clientName,
+					QName:   r.QName,
+					QType:   r.QType,
+					Blocked: r.Blocked == 1,
+					Cached:  false,
+				})
+			}
+		}
+	}
+	if len(v.Recent) == 0 {
+		v.Recent = snap.Recent
 	}
 	if v.QueriesTotal > 0 {
 		v.BlockPercent = float64(v.BlockedTotal) / float64(v.QueriesTotal) * 100
@@ -170,7 +190,6 @@ func (s *Server) stats(r *http.Request) statsView {
 	runtime.ReadMemStats(&m)
 	v.MemAllocMB = float64(m.Alloc) / (1 << 20)
 	v.NumGoroutine = runtime.NumGoroutine()
-	v.Recent = snap.Recent
 	return v
 }
 
